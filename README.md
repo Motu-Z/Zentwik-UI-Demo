@@ -2,6 +2,16 @@
 
 参考 HTML（`deepseek_html_20261103_05531e (1).html`）的 WPF 转写实现。
 
+## 截图
+
+| 深色 · 杂项 | 浅色 · 杂项 |
+|---|---|
+| ![深色](docs/s_misc_dark.png) | ![浅色](docs/s_misc_light.png) |
+
+| 深色 · 调校 | 浅色 · 日志 |
+|---|---|
+| ![调校](docs/s_tuning_dark.png) | ![日志](docs/s_logs_light.png) |
+
 ## 运行
 
 ```bash
