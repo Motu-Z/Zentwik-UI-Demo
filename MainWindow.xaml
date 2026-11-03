@@ -64,31 +64,17 @@
 
                 <!-- 品牌区 -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="20,20,12,24">
-                    <!-- 自绘 Logo：Path 绘制的 Z 字形 -->
-                    <Border Width="32" Height="32"
-                            CornerRadius="6"
-                            Background="{DynamicResource TextMetaBrush}"
-                            ClipToBounds="True">
-                        <!--
-                            Path 的坐标系是 0~32，变换围绕中心 (16,16)。
-                            skewX(-15) 会把左下角推向左外侧，超出 Border 的 32×32 边界，
-                            所以要把 Path 缩到 26×26 并居中偏移，否则会被 ClipToBounds 裁掉。
-                        -->
-                        <Path Data="M4.8 0 H32 V8 L14.4 32 H0 V24 L17.6 8 H4.8 Z"
-                              Fill="{DynamicResource TextPrimaryBrush}"
-                              Width="26" Height="26"
-                              Stretch="Fill"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center">
-                            <Path.RenderTransform>
-                                <TransformGroup>
-                                    <!-- SkewTransform 的属性是 AngleX / AngleY，不是 Angle（Angle 是 RotateTransform 的） -->
-                                    <media:SkewTransform AngleX="-15" AngleY="0" CenterX="13" CenterY="13" />
-                                    <media:ScaleTransform ScaleX="1.05" ScaleY="1.05" CenterX="13" CenterY="13" />
-                                </TransformGroup>
-                            </Path.RenderTransform>
-                        </Path>
-                    </Border>
+                    <!--
+                        应用图标：矢量版 Zentwik 标志（闪电 Z）。
+                        数据来自 Assets/icons/Zentwik.svg，
+                        经 RDP 简化到 48 点 / 468 字符（详见 Themes/BrandLogo.xaml）。
+
+                        三层填充分别绑定品牌色的主色 / 中间调 / 高光，
+                        因此图标会跟随强调色实时变化。
+                    -->
+                    <Rectangle Width="32" Height="32"
+                               Fill="{DynamicResource BrandLogoBrush}"
+                               RadiusX="6" RadiusY="6" />
 
                     <!--
                         参考 HTML 的 letter-spacing: 0.5px 在 WPF 里没有对应属性：

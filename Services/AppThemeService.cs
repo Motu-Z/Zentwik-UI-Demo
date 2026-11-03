@@ -68,6 +68,12 @@ public sealed class AppThemeService
     /// <summary>当前品牌色（twik）画刷。</summary>
     public SolidColorBrush BrandAccentBrush { get; private set; } = new(Color.FromRgb(0xC6, 0xDA, 0xFF));
 
+    /// <summary>品牌色的中间调（应用图标第二层用）。</summary>
+    public SolidColorBrush BrandAccentMidBrush { get; private set; } = new(Color.FromRgb(0x9A, 0xB4, 0xE0));
+
+    /// <summary>品牌色的高光（应用图标第三层用）。</summary>
+    public SolidColorBrush BrandAccentLightBrush { get; private set; } = new(Color.FromRgb(0xE2, 0xEC, 0xFF));
+
     /// <summary>压在强调色上的前景色画刷。</summary>
     public SolidColorBrush AccentForegroundBrush { get; private set; } = new(Color.FromRgb(0x06, 0x12, 0x1A));
 
@@ -144,7 +150,16 @@ public sealed class AppThemeService
         _accentDictionary["AccentBrush"] = AccentBrush;
         _accentDictionary["AccentForegroundBrush"] = AccentForegroundBrush;
         _accentDictionary["BrandAccentBrush"] = BrandAccentBrush;
+        _accentDictionary["BrandAccentMidBrush"] = BrandAccentMidBrush;
+        _accentDictionary["BrandAccentLightBrush"] = BrandAccentLightBrush;
         resources.MergedDictionaries.Add(_accentDictionary);
+
+        // 图标矢量资源（品牌色的三层画刷在 _accentDictionary 里，
+        // 这里只提供几何与画刷结构）
+        resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("Themes/BrandLogo.xaml", UriKind.Relative)
+        });
 
         IsDark = true;
     }
@@ -296,8 +311,17 @@ public sealed class AppThemeService
     /// </summary>
     public void RefreshBrandAccent()
     {
-        BrandAccentBrush = new SolidColorBrush(ColorMath.DeriveBrandColor(AccentColor, IsDark));
+        var brand = ColorMath.DeriveBrandColor(AccentColor, IsDark);
+        var (main, mid, light) = ColorMath.DeriveBrandPalette(brand);
+
+        BrandAccentBrush = new SolidColorBrush(main);
         _accentDictionary["BrandAccentBrush"] = BrandAccentBrush;
+
+        BrandAccentMidBrush = new SolidColorBrush(mid);
+        _accentDictionary["BrandAccentMidBrush"] = BrandAccentMidBrush;
+
+        BrandAccentLightBrush = new SolidColorBrush(light);
+        _accentDictionary["BrandAccentLightBrush"] = BrandAccentLightBrush;
     }
 
     /// <summary>

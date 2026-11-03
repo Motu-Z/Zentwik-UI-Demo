@@ -179,41 +179,22 @@
                                 <!--
                                     颜色预览色块。
 
-                                    【为什么不用 DropShadowEffect】
-                                    WPF 的阴影是按元素**外接矩形**计算的，
-                                    不感知 Border 的圆角 —— 圆角处会残留
-                                    直角暗块，就是截图里那个「阴角」。
+                                    【为什么是「实心圆角矩形」而不是带阴影的方块】
+                                    之前用 DropShadowEffect，阴影按元素**外接矩形**计算，
+                                    不感知 Border 的圆角 —— 圆角处残留直角暗块，
+                                    就是截图里那个「阴角」。
+                                    后来又试过「双层 Border 辉光」，但外层那圈
+                                    半透明色块在浅色主题下反而像个脏边。
 
-                                    这里改成参考 HTML 的做法：强调色辉光
-                                    （accent 色的 8px 模糊扩散，无偏移）。
-
-                                    实现方式：外层一个更大的圆角 Border 铺强调色
-                                    并降低不透明度（充当扩散的辉光），
-                                    内层实色方块盖在上面。
-                                    纯几何、无滤镜，任何缩放下都不会有残留。
+                                    现在按需求改为最干净的方案：
+                                    一个实心圆角矩形，无阴影、无辉光、无边框。
+                                    颜色本身就是信息，不需要额外的装饰来强调。
                                 -->
-                                    <Grid VerticalAlignment="Center">
-                                        <!--
-                                            辉光层：略大的圆角方块，模拟 8px 模糊扩散。
-
-                                            圆角半径按尺寸**等比放大**（58 × 0.24 ≈ 14，
-                                            对应内层 44 × 0.18 ≈ 8 的同一比例）——
-                                            否则大尺寸配小圆角会看起来像个方块。
-                                        -->
-                                        <Border x:Name="SwatchGlow"
-                                                Width="58" Height="58"
-                                                CornerRadius="14"
-                                                Background="{DynamicResource AccentBrush}"
-                                                Opacity="0.22" />
-
-                                        <!-- 实色层 -->
-                                        <Border x:Name="SwatchFill"
-                                                Width="44" Height="44"
-                                                CornerRadius="8"
-                                                Background="{DynamicResource AccentBrush}"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center" />
-                                    </Grid>
+                                <Border Grid.Column="0"
+                                        Width="44" Height="44"
+                                        CornerRadius="8"
+                                        Background="{DynamicResource AccentBrush}"
+                                        VerticalAlignment="Center" />
 
                                 <!-- 彩虹滑块 -->
                                 <Slider Grid.Column="1"
@@ -256,73 +237,83 @@
 
             <!-- ==================== 关于卡片 ==================== -->
             <!--
-                关于卡片：应用图标 + 名称 + 版本号 + 一句话简介 + 版权。
+                关于卡片：应用图标 + 名称 + 版本号胶囊 + 两行注释。
 
-                版本号从程序集元数据读取（AppVersion 属性），
-                不在这里硬编码 —— 版本随 csproj 变化时卡片自动跟随。
+                版式参考 deepseek_html_20261103_4cc9b4.html：
+                  · 顶部一行：图标 / Zentwik / 版本号胶囊
+                  · 底部两行「// 注释」风格（等宽字体 + 灰色）
+                差异：HTML 用了 flex-grow 撑开大片空白，
+                这里改成固定紧凑间距 —— 空白太大在紧凑侧栏布局里显得空。
+
+                版本号不硬编码 —— 读程序集元数据（SettingsViewModel.AppVersion）。
             -->
             <Border Style="{StaticResource CardStyle}"
                     Margin="0,0,0,24">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <!-- 顶部一行 -->
+                    <StackPanel Orientation="Horizontal">
+                        <!-- 新矢量图标 -->
+                        <Rectangle Width="40" Height="40"
+                                   Fill="{DynamicResource BrandLogoBrush}"
+                                   RadiusX="8" RadiusY="8" />
 
-                    <!-- 应用图标：与侧栏同一枚自绘 Z 字形 -->
-                    <Border Grid.Column="0"
-                            Width="52" Height="52"
-                            CornerRadius="10"
-                            Background="{DynamicResource TextMetaBrush}"
-                            ClipToBounds="True"
-                            VerticalAlignment="Top">
-                        <Path Data="M4.8 0 H32 V8 L14.4 32 H0 V24 L17.6 8 H4.8 Z"
-                              Fill="{DynamicResource BrandAccentBrush}"
-                              Width="34" Height="34"
-                              Stretch="Fill"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center">
-                            <Path.RenderTransform>
-                                <TransformGroup>
-                                    <media:SkewTransform AngleX="-15" AngleY="0" CenterX="17" CenterY="17" />
-                                    <media:ScaleTransform ScaleX="1.05" ScaleY="1.05" CenterX="17" CenterY="17" />
-                                </TransformGroup>
-                            </Path.RenderTransform>
-                        </Path>
-                    </Border>
+                        <TextBlock Text="Zentwik"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
 
-                    <StackPanel Grid.Column="1" Margin="20,0,0,0">
-                        <!-- 名称 + 版本号 -->
+                        <!--
+                            版本号胶囊。
+                            点击跳转到项目的 GitHub 仓库 ——
+                            用 Hyperlink 而不是 Button：无边框、跟随文本颜色、
+                            键盘可达、语义正确。
+                        -->
+                        <Border Margin="12,0,0,0"
+                                Padding="10,3"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource AccentBrush}"
+                                CornerRadius="12">
+                            <TextBlock FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentForegroundBrush}">
+                                <Hyperlink NavigateUri="https://github.com/Motu-Z/Zentwik"
+                                           RequestNavigate="OnVersionLinkClick"
+                                           ToolTip="在浏览器中打开项目仓库">
+                                    <TextBlock Text="{Binding AppVersion}" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- 底部两行注释 -->
+                    <StackPanel Margin="0,16,0,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Zentwik"
-                                       FontSize="18"
-                                       FontWeight="Bold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}" />
-                            <Border Margin="10,0,0,0"
-                                    Padding="8,2"
-                                    VerticalAlignment="Center"
-                                    Background="{DynamicResource AccentBrush}"
-                                    CornerRadius="4">
-                                <TextBlock Text="{Binding AppVersion}"
-                                           FontSize="12"
-                                           FontFamily="{DynamicResource AppMonoFontFamily}"
-                                           Foreground="{DynamicResource AccentForegroundBrush}" />
-                            </Border>
+                            <TextBlock Text="//"
+                                       Margin="0,0,8,0"
+                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource TextMetaBrush}" />
+                            <TextBlock Text="关上我身后的门，我走了。"
+                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
 
-                        <!-- 一句话简介 -->
-                        <TextBlock Text="Windows 端调校与自动化工具"
-                                   Margin="0,8,0,0"
-                                   FontSize="13"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-
-                        <!-- 版权行 -->
-                        <TextBlock Text="© 2026 Zentwik"
-                                   Margin="0,12,0,0"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextMetaBrush}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="//"
+                                       Margin="0,0,8,0"
+                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource TextMetaBrush}" />
+                            <TextBlock Text="ZMotu"
+                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
                     </StackPanel>
-                </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
     </ScrollViewer>

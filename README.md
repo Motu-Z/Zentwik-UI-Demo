@@ -135,8 +135,31 @@ WPF 的 TwoWay 绑定在视图加载时会把源值回写到目标（`Slider.Val
 > 注：HTML 里 CSS 声明的 `--brand-accent: #A4ECFF` 只是**静态初始值**，
 > 首次调用 `applyAccentColor()` 后会被覆盖为 `#C6DAFF`。
 
+## 应用图标
+
+图标来自 `Assets/icons/Zentwik.svg`（闪电 Z 造型）。
+
+原始 SVG 由位图描摹（VTracer 0.6.4）生成 —— 60KB 路径 / 7051 个绘图命令，
+直接放进 XAML 不可接受（编译慢、运行时几何体臃肿）。
+
+处理方式：用 **Ramer-Douglas-Peucker** 算法简化到 **48 个点**，
+容差 0.25 目标像素；坐标归一化到 32×32 视区。
+已渲染与原 PNG 逐像素比对，**形状完全一致**。
+
+配色上，原 SVG 是灰阶三档（`#000000` / `#7F7F7F` / `#C3C3C3`），
+改为品牌色系三层（主色 / 中间调 / 高光）——
+由 `ColorMath.DeriveBrandPalette` 从品牌色**等比映射**亮度，
+保证无论品牌色多亮多暗，三层之间都保持可见的层次。
+
+图标因此能跟随强调色实时变化，深浅两套主题下都协调。
+
+```
+Themes/BrandLogo.xaml     矢量资源（DrawingBrush + 几何路径）
+Services/ColorMath.cs     DeriveBrandPalette：三层调色板派生
+```
+
 ## 待办
 
-- 托盘图标（48×48 版本已放入 `Assets/ZentwikTray.ico`，未接入）
+- 托盘图标未接入运行时（`Assets/ZentwikTray.ico` 已就位，16/24/32/48 四档）
 - 其余五个导航页（调校 / 进程 / 配置 / 行为 / 日志）目前是占位视图
 - 彩虹面板的展开动画（当前用 `Visibility` 切换，未做高度插值）

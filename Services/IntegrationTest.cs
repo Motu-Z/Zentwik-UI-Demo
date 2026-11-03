@@ -1,5 +1,6 @@
 using System.Text;
 using System.Windows;
+using System.Linq;
 using System.Windows.Media;
 using ZentwikThemeDemo.ViewModels;
 
@@ -207,6 +208,26 @@ public static class IntegrationTest
         // 恢复默认状态，避免影响后续运行
         theme.SetAccentMode(AccentSource.Custom);
         theme.SetAccentColor(Color.FromRgb(0x60, 0xCD, 0xFF));
+        theme.SetThemeMode(AppTheme.Dark);
+
+        // ============================================================
+        // 6.6 浅色主题下 AccentBrush 必须仍能解析（本轮回归）
+        // ============================================================
+        Say("\n=== 6.6 浅色主题的强调色解析 ===");
+        theme.SetThemeMode(AppTheme.Light);
+        Check("浅色主题下 AccentBrush 可解析", BrushColor(resources, "AccentBrush") != "<无>",
+              BrushColor(resources, "AccentBrush"));
+        Check("浅色主题下 BrandAccentBrush 可解析", BrushColor(resources, "BrandAccentBrush") != "<无>",
+              BrushColor(resources, "BrandAccentBrush"));
+
+        // 列出各字典的键，看 AccentBrush 到底在哪个字典里
+        for (int i = 0; i < resources.MergedDictionaries.Count; i++)
+        {
+            var keys = resources.MergedDictionaries[i].Keys.Cast<object>()
+                .Select(k => k.ToString()).ToList();
+            Say($"    [{i}] 含 AccentBrush? {keys.Contains("AccentBrush")}   键数={keys.Count}");
+        }
+
         theme.SetThemeMode(AppTheme.Dark);
 
         // ============================================================

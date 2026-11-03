@@ -93,6 +93,41 @@ public static class ColorMath
     }
 
     /// <summary>
+    /// 派生品牌色的三层调色板（主色 / 中间调 / 高光）。
+    /// </summary>
+    /// <remarks>
+    /// 用于 Zentwik 应用图标的三层填充 ——
+    /// 原 SVG 是灰阶三档（#000000 / #7F7F7F / #C3C3C3），
+    /// 换成品牌色系后图标能跟随强调色变化。
+    ///
+    /// 【层次怎么定】
+    /// 原图三层的**相对亮度**是 0% / 50% / 77%。
+    /// 若直接对品牌色做 ±12 点的偏移，在浅色品牌色（如 #C6DAFF，
+    /// L 已经接近 90）上会被夹住 —— 三层挤在一起糊成一团。
+    ///
+    /// 所以这里按品牌色自身的亮度**等比映射**：
+    ///   中间调 = L × 0.72（对应原图的 50% 档）
+    ///   高光   = L × 0.92 + 6（对应原图的 77% 档，且保留一点亮度差）
+    /// 无论品牌色多亮多暗，三层之间都保持可见的层次。
+    /// </remarks>
+    public static (Color Main, Color Mid, Color Light) DeriveBrandPalette(Color brand)
+    {
+        var (h, s, l) = RgbToHsl(brand.R, brand.G, brand.B);
+
+        // 中间调：压暗到主色的 72%
+        var (mr, mg, mb) = HslToRgb(h, s, l * 0.72);
+
+        // 高光：略提亮但明显比主色亮
+        var (lr, lg, lb) = HslToRgb(h, Math.Min(100.0, s * 0.55), Math.Min(100.0, l * 0.92 + 6.0));
+
+        return (
+            brand,
+            Color.FromRgb(mr, mg, mb),
+            Color.FromRgb(lr, lg, lb)
+        );
+    }
+
+    /// <summary>
     /// 解析 HEX。支持 #RGB / #RRGGBB，带不带 # 都能解析。
     /// </summary>
     public static bool TryParseHex(string? text, out Color color)

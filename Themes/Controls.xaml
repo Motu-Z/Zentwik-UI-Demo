@@ -253,13 +253,6 @@
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
                     <Grid>
-                        <!-- 选中态左侧强调色竖条 -->
-                        <Border x:Name="Indicator"
-                                Width="3" Height="16"
-                                HorizontalAlignment="Left"
-                                CornerRadius="0,4,4,0"
-                                Background="{DynamicResource AccentBrush}"
-                                Opacity="0" />
                         <Border x:Name="Root"
                                 Height="40"
                                 Margin="0,1"
@@ -272,6 +265,24 @@
                                               TextElement.FontSize="{TemplateBinding FontSize}"
                                               TextElement.FontWeight="{TemplateBinding FontWeight}" />
                         </Border>
+
+                        <!--
+                            选中态左侧强调色竖条。
+
+                            【必须放在 Root 之后】
+                            Grid 的子元素按声明顺序叠放，后声明的在上层。
+                            Root 的背景（ItemSelectedBrush）在浅色主题下是
+                            **不透明**的灰色（#D0D0D0），深色下是半透明白。
+                            若 Indicator 在 Root 之前，浅色下会被不透明选中背景
+                            完全盖住 —— 表现就是「浅色模式没有小竖条」。
+                            放在之后即可保证两种主题下都压在上层可见。
+                        -->
+                        <Border x:Name="Indicator"
+                                Width="3" Height="16"
+                                HorizontalAlignment="Left"
+                                CornerRadius="0,4,4,0"
+                                Background="{DynamicResource AccentBrush}"
+                                Opacity="0" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
