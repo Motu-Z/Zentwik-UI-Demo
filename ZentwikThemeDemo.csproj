@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Zentwik 主题 / 外壳重构 —— 独立 Demo 工程。
+
+    【为什么不并进 Zentwik.UI】
+    在产工程的 Themes/ 已整体废弃（令牌体系、控件样式全部作废），
+    新体系与旧体系在同一命名空间下会互相污染（同名 ResourceDictionary key、
+    同名 Style）。这里起一个独立工程，验证通过再决定是否合并。
+
+    【为什么用 net10.0-windows】
+    与在产工程对齐（Zentwik.Core / Zentwik.UI 均为 net10.0-windows），
+    避免验证通过后迁移时再动 TFM。
+
+    【版本号唯一来源】
+    本工程的 <Version> 是版本号的唯一真源，MainWindow 侧栏通过
+    AssemblyInformationalVersionAttribute 读取，不在任何 XAML / C# 里硬编码。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ZentwikThemeDemo</RootNamespace>
+    <AssemblyName>ZentwikThemeDemo</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
+
+    <!-- 版本号唯一真源：侧栏显示的版本文本从这里派生，不硬编码。 -->
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+
+    <!-- 图标：新「Z」字形（24x24）。托盘图标另行接入，不在本工程范围内。 -->
+    <ApplicationIcon>Assets\Zentwik.ico</ApplicationIcon>
+  </PropertyGroup>
+
+</Project>

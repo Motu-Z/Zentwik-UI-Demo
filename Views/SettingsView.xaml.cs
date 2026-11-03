@@ -1,0 +1,155 @@
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media.Animation;
+using ZentwikThemeDemo.ViewModels;
+
+namespace ZentwikThemeDemo.Views;
+
+/// <summary>
+/// 通用（杂项）设置页。
+///
+/// <remarks>
+/// 视图只负责绑定与事件转发 —— 状态切换与颜色计算全在 SettingsViewModel。
+/// 这里的两个事件处理仅做一件事：把「用户何时提交了 HEX」转交给 ViewModel。
+///
+/// 【彩虹面板的展开/收起动画为什么放在 View 层】
+/// 判定「该不该展开」是 ViewModel 的职责（IsColorPanelVisible），
+/// 但「怎么展开」是纯表现层的事：Storyboard 要 TargetName 到具体元素，
+/// 而 DataTrigger 内的 Storyboard 在页面级 Style 里 TargetName 解析不可靠。
+/// 所以拆成两半：ViewModel 决定状态，View 执行动画。
+/// </remarks>
+public partial class SettingsView : UserControl
+{
+    /// <summary>面板完全展开时的高度（Padding 16×2 + 内容 44）。</summary>
+    private const double PanelExpandedHeight = 76;
+
+    public SettingsView()
+    {
+        InitializeComponent();
+
+        // 视图加载完成后再解除 HueValue 的初始化保护 ——
+        // TwoWay 绑定在加载期会把源值回写一次，
+        // 那次回写不应产生副作用（否则初始强调色会被 hsl(h,85,65) 覆盖）。
+        Loaded += (_, _) =>
+        {
+            if (DataContext is SettingsViewModel vm)
+            {
+                vm.OnViewLoaded();
+                ApplyPanelState(vm.IsColorPanelVisible, animate: false);
+            }
+        };
+
+        // 展开/收起由 ViewModel 的 IsColorPanelVisible 驱动。
+        // 这里监听属性变化，把状态翻译成动画 ——
+        // 判定逻辑仍在 ViewModel，View 只执行。
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is SettingsViewModel oldVm)
+        {
+            oldVm.PropertyChanged -= OnVmPropertyChanged;
+        }
+
+        if (e.NewValue is SettingsViewModel newVm)
+        {
+            newVm.PropertyChanged += OnVmPropertyChanged;
+            ApplyPanelState(newVm.IsColorPanelVisible, animate: false);
+        }
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SettingsViewModel.IsColorPanelVisible)
+            && sender is SettingsViewModel vm)
+        {
+            ApplyPanelState(vm.IsColorPanelVisible, animate: true);
+        }
+    }
+
+    /// <summary>
+    /// 按目标状态执行展开 / 收起动画。
+    /// </summary>
+    private void ApplyPanelState(bool expanded, bool animate)
+    {
+        if (expanded)
+        {
+            ColorPanelHost.Visibility = Visibility.Visible;
+        }
+
+        var height = new DoubleAnimation
+        {
+            To = expanded ? PanelExpandedHeight : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(animate ? 180 : 0)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        var opacity = new DoubleAnimation
+        {
+            To = expanded ? 1 : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(animate ? 180 : 0)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(height);
+        storyboard.Children.Add(opacity);
+        Storyboard.SetTarget(height, ColorPanelHost);
+        Storyboard.SetTargetProperty(height, new PropertyPath(Grid.HeightProperty));
+        Storyboard.SetTarget(opacity, ColorPanelBody);
+        Storyboard.SetTargetProperty(opacity, new PropertyPath(UIElement.OpacityProperty));
+
+        // 收起动画播完再真正隐藏，否则会瞬间消失（没有动画效果）
+        if (!expanded)
+        {
+            storyboard.Completed += (_, _) =>
+            {
+                if (!IsPanelExpanded())
+                {
+                    ColorPanelHost.Visibility = Visibility.Collapsed;
+                }
+            };
+        }
+
+        storyboard.Begin(this);
+    }
+
+    /// <summary>当前是否处于展开状态（依据目标高度）。</summary>
+    private bool IsPanelExpanded() =>
+        DataContext is SettingsViewModel vm && vm.IsColorPanelVisible;
+
+    /// <summary>
+    /// HEX 输入框失去焦点 → 提交解析。
+    /// </summary>
+    private void OnHexLostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitHex();
+    }
+
+    /// <summary>
+    /// HEX 输入框按回车 → 提交解析。
+    /// </summary>
+    private void OnHexKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitHex();
+
+            // 提交后把焦点移走，避免 Enter 之后立刻又触发一次 LostFocus
+            if (sender is TextBox tb)
+            {
+                tb.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            }
+        }
+    }
+
+    private void CommitHex()
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            vm.CommitHexInput();
+        }
+    }
+}

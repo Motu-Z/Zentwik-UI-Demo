@@ -1,0 +1,35 @@
+## .NET / Visual Studio
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Build output
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.dll
+*.exe
+*.pdb
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+
+## WPF / VS designer
+*.xaml.csproj.user
+*.g.cs
+*.g.i.cs
+
+## OS
+Thumbs.db
+.DS_Store
+desktop.ini

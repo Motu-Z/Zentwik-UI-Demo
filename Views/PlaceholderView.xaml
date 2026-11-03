@@ -1,0 +1,39 @@
+<UserControl x:Class="ZentwikThemeDemo.Views.PlaceholderView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:ZentwikThemeDemo.Views"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <!--
+        占位页的通用骨架。
+
+        【为什么要做基类而不是五份重复 XAML】
+        五个占位页的结构完全一样：标题 + 一张空卡片 + [功能开发中]。
+        复制五份只会在后续改样式时漏改其中几个。
+        这里把骨架收敛到一处，各页面只继承并设置标题。
+
+        【全局主题响应】
+        页面里所有颜色一律 DynamicResource —— 切深/浅色时
+        背景、边框、文字、卡片底色会整体跟着换，
+        不会出现「白底黑字」或「黑底黑字」的孤儿控件。
+        CardStyle 内部用的也是 DynamicResource，同样自动跟随。
+    -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <!-- 页面标题 -->
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType={x:Type views:PlaceholderView}}}"
+                       FontSize="32"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       Margin="0,0,0,32" />
+
+            <!-- 内容卡片 -->
+            <Border Style="{StaticResource CardStyle}">
+                <TextBlock Text="[功能开发中]"
+                           FontSize="15"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
