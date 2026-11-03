@@ -189,29 +189,25 @@ public partial class SettingsView : UserControl
     /// 版本号胶囊点击 → 用系统默认浏览器打开项目仓库。
     /// </summary>
     /// <remarks>
-    /// WPF 的 Hyperlink 默认只处理内部 URI（pack://、http 会在
-    /// 某些场景下抛 NotSupportedException），外部 https 链接
-    /// 必须自己用 Process.Start 打开。
+    /// 外部 https 链接必须自己用 Process.Start 打开
+    /// （UseShellExecute = true 让 Windows 用默认浏览器接管）。
+    /// 打不开浏览器不该让应用崩溃 —— 记一笔即可。
     /// </remarks>
-    private void OnVersionLinkClick(object sender, RequestNavigateEventArgs e)
+    private void OnVersionPillClick(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
+        var url = (DataContext as SettingsViewModel)?.RepositoryUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
 
         try
         {
-            var uri = e.Uri;
-            if (uri is null) return;
-
-            // UseShellExecute = true 让 Windows 用默认浏览器接管
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = uri.AbsoluteUri,
+                FileName = url,
                 UseShellExecute = true,
             });
         }
         catch (Exception ex)
         {
-            // 打不开浏览器不该让应用崩溃 —— 记一笔即可
             System.Diagnostics.Debug.WriteLine($"[SettingsView] 打开链接失败: {ex.Message}");
         }
     }

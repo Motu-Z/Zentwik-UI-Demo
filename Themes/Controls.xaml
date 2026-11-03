@@ -97,6 +97,76 @@
         <Setter Property="CornerRadius" Value="6" />
     </Style>
 
+    <!--
+        ==================== 主题色胶囊 ====================
+
+        【统一规则】
+        凡是以「主题色」作背景、里面还要放文字的控件（版本号胶囊、
+        状态标签之类），一律走这套组合：
+            底 = AccentSubtleBrush（淡主题色，半透明）
+            字 = TextPrimaryBrush（不受主题色影响的高对比度文本色）
+        理由：实心强调色打底时，文字对比度全看用户挑了什么颜色 ——
+        挑个亮黄，白字就糊成一片。淡主题色把底色压到可控区间，
+        文字就能固定用「深色主题=白 / 浅色主题=黑」。
+
+        【后续同类控件直接套这两个样式即可】
+    -->
+    <Style x:Key="AccentSubtlePillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="10,3" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AccentPillTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!--
+        ==================== 主题色胶囊里的可点文字 ====================
+
+        【为什么用 Button 而不是 Hyperlink】
+        WPF 的 Hyperlink 会在内容上强制加下划线，并把文字刷成系统链接色，
+        这两样都改不掉：
+          · TextDecorations 是 Hyperlink 自己写进内容的本地值，
+            在内部 TextBlock 上设 TextDecorations="None" 也盖不住；
+          · 颜色虽能用 TextElement.Foreground 接管，但下划线去不掉。
+        而胶囊要的就是「干净的底 + 高对比度字」，
+        所以改用透明 Button：外观完全由自己掌控，
+        键盘可达性由 Button 原生提供（Hyperlink 本来也是）。
+    -->
+    <Style x:Key="PillButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ==================== 分段控件（RadioButton 重写） ==================== -->
     <Style x:Key="SegmentRadioButtonStyle" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />

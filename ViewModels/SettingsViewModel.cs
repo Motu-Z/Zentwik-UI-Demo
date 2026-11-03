@@ -295,4 +295,9 @@ public sealed class SettingsViewModel : ViewModelBase
             return "v" + (plus > 0 ? version[..plus] : version);
         }
     }
+
+    /// <summary>
+    /// 项目仓库地址（关于卡片上的版本号胶囊点击后打开）。
+    /// </summary>
+    public string RepositoryUrl => "https://github.com/Motu-Z/Zentwik";
 }

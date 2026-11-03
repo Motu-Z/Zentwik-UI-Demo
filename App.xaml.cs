@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Linq;
 using System.Text;
@@ -34,6 +35,28 @@ public partial class App : Application
         // 替换成空模板，从根上保证「应用内没有虚线」。
         // ============================================================
         FocusVisualKiller.Initialize();
+
+        // ---- 托盘探针（诊断用）----
+        // --trayprobe: 只创建托盘图标，把结果打印到控制台后退出。
+        // 用来在没有可视化环境的机器上确认 Shell_NotifyIcon 是否真的成功。
+        if (e.Args.Contains("--trayprobe"))
+        {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+
+            string probeIcon = System.IO.Path.Combine(
+                AppContext.BaseDirectory, "Assets", "ZentwikTray.ico");
+
+            using var probeTray = new TrayIconService();
+            bool probeOk = probeTray.Initialize(probeIcon);
+
+            Console.WriteLine($"trayprobe: icon       = {probeIcon}");
+            Console.WriteLine($"trayprobe: fileExists = {System.IO.File.Exists(probeIcon)}");
+            Console.WriteLine($"trayprobe: available  = {probeOk}");
+            Console.Out.Flush();
+
+            Shutdown(0);
+            return;
+        }
 
         // ---- 命令行自检模式 ----
         // --selftest: 颜色算法断言（纯函数，不需要窗口）
@@ -75,6 +98,18 @@ public partial class App : Application
         var window = new MainWindow();
         MainWindow = window;
         window.Show();
+
+        // ============================================================
+        // 系统托盘
+        //
+        // 截图模式不接托盘 —— 否则每次离屏渲染都会往系统托盘
+        // 塞一个图标出来，污染用户环境。
+        // ============================================================
+        bool isScreenshotMode = e.Args.Contains("--screenshot");
+        if (!isScreenshotMode)
+        {
+            SetupTray(window);
+        }
 
         // ---- 离屏截图模式 ----
         // 用 WPF 自己的 RenderTargetBitmap 渲染，不依赖屏幕抓取：
@@ -118,5 +153,50 @@ public partial class App : Application
                 Shutdown(0);
             });
         }
+    }
+
+    /// <summary>
+    /// 托盘图标实例 —— 必须持有引用，否则会被 GC 回收，
+    /// 消息窗口随之销毁，托盘图标也会消失。
+    /// </summary>
+    private TrayIconService? _tray;
+
+    /// <summary>
+    /// 创建托盘图标并接上主窗口的显示 / 隐藏 / 退出。
+    /// </summary>
+    private void SetupTray(MainWindow window)
+    {
+        string iconPath = System.IO.Path.Combine(
+            AppContext.BaseDirectory, "Assets", "ZentwikTray.ico");
+
+        var tray = new TrayIconService();
+        if (!tray.Initialize(iconPath))
+        {
+            // 托盘不可用 → 关闭按钮必须正常退出，
+            // 否则用户会把应用「关掉」却再也打不开。
+            Debug.WriteLine("[App] 托盘图标创建失败，关闭窗口将直接退出。");
+            return;
+        }
+
+        _tray = tray;
+
+        tray.ShowRequested += (_, _) =>
+        {
+            window.Show();
+            if (window.WindowState == WindowState.Minimized)
+            {
+                window.WindowState = WindowState.Normal;
+            }
+            window.Activate();
+        };
+
+        tray.HideRequested += (_, _) => window.Hide();
+
+        tray.ExitRequested += (_, _) => window.ExitApplication();
+
+        // 托盘可用后，关闭按钮改为收进托盘
+        window.MinimizeToTrayEnabled = true;
+
+        Exit += (_, _) => _tray?.Dispose();
     }
 }

@@ -185,6 +185,47 @@ public partial class MainWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// 是否启用「关闭窗口 = 最小化到托盘」。
+    /// </summary>
+    /// <remarks>
+    /// 只有托盘图标确实创建成功时才允许为 true ——
+    /// 否则用户点了关闭按钮就再也找不到应用了。
+    /// 由 <see cref="App"/> 在托盘初始化成功后置位。
+    /// </remarks>
+    public bool MinimizeToTrayEnabled { get; set; }
+
+    /// <summary>
+    /// 关闭时改为隐藏到托盘（而非退出进程）。
+    /// </summary>
+    /// <remarks>
+    /// 拦的是 Closing 而不是 Close —— 这样标题栏的 × 和 Alt+F4
+    /// 行为一致，都是收进托盘。
+    /// 真正退出走托盘右键菜单的「退出 Zentwik」。
+    /// </remarks>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+
+        if (MinimizeToTrayEnabled && !_allowClose)
+        {
+            e.Cancel = true;
+            Hide();
+        }
+    }
+
+    /// <summary>允许真正关闭（托盘「退出」命令用）。</summary>
+    private bool _allowClose;
+
+    /// <summary>
+    /// 彻底退出应用：解除托盘拦截并关闭主窗口。
+    /// </summary>
+    public void ExitApplication()
+    {
+        _allowClose = true;
+        Close();
+    }
+
     private void ToggleMaximize()
     {
         if (WindowState == WindowState.Maximized)

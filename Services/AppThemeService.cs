@@ -77,6 +77,21 @@ public sealed class AppThemeService
     /// <summary>压在强调色上的前景色画刷。</summary>
     public SolidColorBrush AccentForegroundBrush { get; private set; } = new(Color.FromRgb(0x06, 0x12, 0x1A));
 
+    /// <summary>
+    /// 淡强调色画刷 —— 主题色背景的浅色版本（半透明）。
+    ///
+    /// 【为什么需要单独一个画刷，而不是给 AccentBrush 加 Opacity】
+    /// 强调色画刷是「实心底」，文字用 AccentForegroundBrush（按亮度取黑/白）。
+    /// 但胶囊这类小面积底色如果也用实心强调色，文字与底色的对比度
+    /// 完全取决于用户挑了什么颜色 —— 挑个亮黄就糊成一片。
+    ///
+    /// 淡强调色把主题色按低透明度叠在卡片底上，底色永远偏暗（深色主题）
+    /// 或偏亮（浅色主题），于是文字可以统一用 TextPrimaryBrush
+    /// （深色主题=白，浅色主题=黑），对比度稳定。
+    /// </summary>
+    public SolidColorBrush AccentSubtleBrush { get; private set; } =
+        new(Color.FromRgb(0x60, 0xCD, 0xFF)) { Opacity = 0.22 };
+
     private AppThemeService() { }
 
     /// <summary>当前主题模式（用户选择：浅色 / 深色 / 系统）。</summary>
@@ -149,6 +164,7 @@ public sealed class AppThemeService
         // 「用新实例替换字典项」既避开冻结，又能触发 DynamicResource 立即刷新。
         _accentDictionary["AccentBrush"] = AccentBrush;
         _accentDictionary["AccentForegroundBrush"] = AccentForegroundBrush;
+        _accentDictionary["AccentSubtleBrush"] = AccentSubtleBrush;
         _accentDictionary["BrandAccentBrush"] = BrandAccentBrush;
         _accentDictionary["BrandAccentMidBrush"] = BrandAccentMidBrush;
         _accentDictionary["BrandAccentLightBrush"] = BrandAccentLightBrush;
@@ -252,6 +268,9 @@ public sealed class AppThemeService
         // 明暗切换会改变品牌色的 L 档（深色加亮 / 浅色压暗）→ 重算一次
         RefreshBrandAccent();
 
+        // 淡强调色的不透明度也跟明暗相关 → 同样要重建
+        RefreshAccentSubtle();
+
         ThemeChanged?.Invoke(this, IsDark);
     }
 
@@ -302,8 +321,26 @@ public sealed class AppThemeService
             IsLight(color) ? Color.FromRgb(0x06, 0x12, 0x1A) : Colors.White);
         _accentDictionary["AccentForegroundBrush"] = AccentForegroundBrush;
 
+        RefreshAccentSubtle();
+
         RefreshBrandAccent();
         AccentChanged?.Invoke(this, color);
+    }
+
+    /// <summary>
+    /// 重建淡强调色画刷。
+    ///
+    /// 深色主题下用更高的不透明度（0.26），否则叠在近黑的卡片上
+    /// 会淡到几乎看不见；浅色主题下用更低的（0.16），
+    /// 免得在白底上糊成一片。
+    /// </summary>
+    private void RefreshAccentSubtle()
+    {
+        AccentSubtleBrush = new SolidColorBrush(AccentColor)
+        {
+            Opacity = IsDark ? 0.26 : 0.16,
+        };
+        _accentDictionary["AccentSubtleBrush"] = AccentSubtleBrush;
     }
 
     /// <summary>

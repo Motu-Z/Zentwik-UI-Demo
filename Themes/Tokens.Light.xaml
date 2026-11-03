@@ -42,6 +42,13 @@
     <FontFamily x:Key="AppMonoFontFamily">Cascadia Mono, Consolas, Courier New</FontFamily>
 
     <!--
+      注释行专用字体链 —— 与 Tokens.Dark.xaml 严格一致。
+      关键点：把中文字体显式放进链条，避免中文回退到宋体（衬线）
+      与等宽的「//」割裂。详见 Tokens.Dark.xaml 中的说明。
+    -->
+    <FontFamily x:Key="AppCommentFontFamily">Cascadia Mono, Microsoft YaHei UI, Microsoft YaHei, DengXian</FontFamily>
+
+    <!--
       ============ 卡片阴影 ============
       浅色下阴影要轻得多，否则白卡片在浅灰底上像贴了张黑纸。
       键集合与 Tokens.Dark.xaml 严格一致。

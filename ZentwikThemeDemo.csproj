@@ -37,4 +37,14 @@
     <ApplicationIcon>Assets\Zentwik.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      托盘图标：LoadImage 需要真实文件路径，
+      所以随输出目录一起复制（不走 WPF 资源嵌入）。
+    -->
+    <Content Include="Assets\ZentwikTray.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
