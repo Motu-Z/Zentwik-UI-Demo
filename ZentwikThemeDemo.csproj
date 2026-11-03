@@ -33,18 +33,12 @@
     <FileVersion>1.0.0.0</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
 
-    <!-- 图标：新「Z」字形（24x24）。托盘图标另行接入，不在本工程范围内。 -->
+    <!--
+      应用图标：Windows 任务栏 / 资源管理器 / Alt-Tab 都用它。
+      内含 16/24/32/48/64/128/256 七档，任意缩放比例都有原生帧，
+      不会出现缩放模糊。
+    -->
     <ApplicationIcon>Assets\Zentwik.ico</ApplicationIcon>
   </PropertyGroup>
-
-  <ItemGroup>
-    <!--
-      托盘图标：LoadImage 需要真实文件路径，
-      所以随输出目录一起复制（不走 WPF 资源嵌入）。
-    -->
-    <Content Include="Assets\ZentwikTray.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
 
 </Project>

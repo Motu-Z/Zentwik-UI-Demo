@@ -17,6 +17,16 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
+    /// <summary>
+    /// MonitorFromPoint —— 取某个屏幕坐标所在的显示器。
+    /// </summary>
+    /// <remarks>
+    /// 托盘菜单需要按**鼠标所在的那块屏**定位并避开任务栏，
+    /// 用 MonitorFromWindow 拿不到（托盘没有窗口句柄）。
+    /// </remarks>
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
@@ -52,29 +62,33 @@ internal static class NativeMethods
     /// <summary>结构体包含提示文本。</summary>
     public const uint NIF_TIP = 0x00000004;
 
-    /// <summary>菜单项：普通字符串。</summary>
-    public const uint MF_STRING = 0x00000000;
+    /// <summary>
+    /// GetSystemMetrics 的索引：SM_CXSMICON —— 小图标（16×16 逻辑）的宽度。
+    /// </summary>
+    /// <remarks>
+    /// 托盘图标的正确物理尺寸由这个值 × 当前 DPI 得出。
+    /// 在 Per-Monitor DPI 感知的进程里，GetSystemMetrics 返回的是
+    /// **当前显示器**的值 —— 这正是我们要的（不同屏不同缩放时托盘图标尺寸也不同）。
+    /// </remarks>
+    public const int SM_CXSMICON = 49;
 
-    /// <summary>菜单项：分隔线。</summary>
-    public const uint MF_SEPARATOR = 0x00000800;
+    /// <summary>
+    /// GetSystemMetrics 的索引：SM_CYSMICON —— 小图标的高度。
+    /// </summary>
+    public const int SM_CYSMICON = 50;
 
-    /// <summary>弹出菜单：右键对齐。</summary>
-    public const uint TPM_RIGHTBUTTON = 0x0002;
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int nIndex);
 
-    /// <summary>弹出菜单：直接返回被选中的命令 ID（不发送 WM_COMMAND）。</summary>
-    public const uint TPM_RETURNCMD = 0x0100;
-
-    /// <summary>弹出菜单：不发送 WM_COMMAND 通知（配合 TPM_RETURNCMD）。</summary>
-    public const uint TPM_NONOTIFY = 0x0080;
-
-    /// <summary>LoadImage 的类型：图标。</summary>
-    public const uint IMAGE_ICON = 1;
-
-    /// <summary>LoadImage 的标志：从文件加载。</summary>
-    public const uint LR_LOADFROMFILE = 0x00000010;
-
-    /// <summary>LoadImage 的标志：使用系统默认尺寸。</summary>
-    public const uint LR_DEFAULTSIZE = 0x00000040;
+    /// <summary>
+    /// GetDpiForWindow —— 取窗口所在显示器的 DPI。
+    /// </summary>
+    /// <remarks>
+    /// Win10 1607+ 才有这个 API；旧版本上返回 0，
+    /// 调用方需要自己回落到 96（100% 缩放）。
+    /// </remarks>
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
 
     /// <summary>NOTIFYICONDATA —— 托盘图标描述结构。</summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -110,41 +124,87 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool Shell_NotifyIcon(uint dwMessage, ref NOTIFYICONDATA lpData);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern IntPtr LoadImage(
-        IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr CreatePopupMenu();
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool AppendMenu(
-        IntPtr hMenu, uint uFlags, UIntPtr uIDNewItem, string? lpNewItem);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern uint TrackPopupMenu(
-        IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr lpRect);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool DestroyMenu(IntPtr hMenu);
-
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(IntPtr hIcon);
+
+    // ============================================================
+    //  由 DIB 创建 HICON（托盘图标运行时渲染用）
+    // ============================================================
+
+    /// <summary>CreateDIBSection 的用法：DIB_RGB_COLORS。</summary>
+    public const uint DIB_RGB_COLORS = 0;
+
+    /// <summary>CreateDIBSection 的用法：自下而上（top-down）。</summary>
+    public const int DIB_TOPDOWN = -1;
+
+    /// <summary>BITMAPINFOHEADER 的 biSize。</summary>
+    public const uint BI_RGB = 0;
+
+    /// <summary>
+    /// BITMAPINFOHEADER + 附加的 RGBQUAD 数组（biSizeImage 之后紧跟）。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFO
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+
+        // RGBQUAD[1] —— 32bpp 时不需要调色板，但结构体要留出这个位置，
+        // 否则 CreateDIBSection 会因为结构体长度不符而失败。
+        public uint biColors;
+    }
+
+    /// <summary>
+    /// ICONINFO —— 描述一个图标（彩色位图 + 掩码位图）。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ICONINFO
+    {
+        public bool fIcon;
+        public int xHotspot;
+        public int yHotspot;
+        public IntPtr hbmMask;
+        public IntPtr hbmColor;
+    }
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr CreateDIBSection(
+        IntPtr hdc, ref BITMAPINFO pbmi, uint iUsage,
+        out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr CreateBitmap(
+        int nWidth, int nHeight, uint nPlanes, uint nBitsPerPixel, IntPtr lpBits);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr CreateIconIndirect(ref ICONINFO piconinfo);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(IntPtr hObject);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
     /// <summary>屏幕坐标点。</summary>
     [StructLayout(LayoutKind.Sequential)]

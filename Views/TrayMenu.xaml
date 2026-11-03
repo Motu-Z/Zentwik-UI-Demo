@@ -1,0 +1,69 @@
+<UserControl x:Class="ZentwikThemeDemo.Views.TrayMenu"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <!--
+      托盘右键菜单。
+
+      【为什么是 WPF 自绘而不是 Win32 菜单】
+      Win32 的 CreatePopupMenu 由系统渲染：深色任务栏上仍是浅色米白气泡，
+      字号字体也不受应用控制；而改深浅只能靠 uxtheme 的 undocumented API
+      （SetPreferredAppMode / AllowDarkModeForWindow），实测本机已不再导出。
+      所以整块自绘，外观完全跟随主题令牌。
+
+      【为什么外层要套一个 0x0 的宿主窗口】
+      WPF 的 Popup 依附于它的宿主窗口：宿主一旦隐藏或最小化，
+      Popup 会跟着消失。而托盘菜单恰恰要在「主窗口已收进托盘（隐藏）」
+      的状态下弹出 —— 这是一个直接冲突。
+      解法是由 TrayMenuPresenter 提供一个 0x0、全透明、不在任务栏的
+      宿主窗口常驻，Popup 挂在它下面，定位用 AbsolutePoint（屏幕坐标）。
+    -->
+    <Grid>
+        <Popup x:Name="Popup"
+               Placement="AbsolutePoint"
+               AllowsTransparency="True"
+               StaysOpen="False"
+               PopupAnimation="Fade"
+               KeyDown="OnPopupKeyDown">
+            <Border x:Name="Panel"
+                    Width="176"
+                    Margin="10"
+                    Padding="4"
+                    Background="{DynamicResource CardBgBrush}"
+                    BorderBrush="{DynamicResource BorderColorBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Effect="{DynamicResource CardShadowEffect}">
+                <StackPanel>
+                    <Button x:Name="ShowButton"
+                            Style="{StaticResource TrayMenuItemStyle}"
+                            Click="OnShowClick">
+                        <TextBlock Text="显示窗口" Style="{StaticResource TrayMenuItemTextStyle}" />
+                    </Button>
+
+                    <Border Style="{StaticResource TrayMenuSeparatorStyle}" />
+
+                    <!--
+                        预留项：功能尚未实现，灰显不可点。
+                        用 TextMetaBrush 而不是 IsEnabled=False ——
+                        后者会被系统的禁用色接管，反而失去主题一致性。
+                    -->
+                    <TextBlock Text="禁用配置（预留）"
+                               Margin="14,8"
+                               FontSize="13"
+                               Foreground="{DynamicResource TextMetaBrush}" />
+
+                    <Border Style="{StaticResource TrayMenuSeparatorStyle}" />
+
+                    <Button Style="{StaticResource TrayMenuItemStyle}"
+                            Click="OnExitClick">
+                        <TextBlock Text="退出程序" Style="{StaticResource TrayMenuItemTextStyle}" />
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

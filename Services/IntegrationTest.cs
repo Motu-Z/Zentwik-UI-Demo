@@ -297,23 +297,31 @@ public static class IntegrationTest
         Check("换色后应用图标被重建", !ReferenceEquals(logoBefore, theme.BrandLogoImage),
               "BrandLogoImage 实例已更换");
 
-        // 图标必须真的用上了新的品牌色（不能只是换了实例）
-        bool logoUsesBrand = false;
+        // 图标必须真的用上了新的调色板（不能只是换了实例）。
+        // 【配色规则已变更】
+        // 旧方案把三层分别映射到品牌色的主色 / 中间调 / 高光，
+        // 结果「阴影」变成了另一种颜色的色块，不是阴影。
+        // 现方案：主体 = 强调色（带对比度保底），阴影 = 同色相压暗。
+        bool logoUsesBody = false;
+        bool logoUsesShadow = false;
+
         if (theme.BrandLogoImage.Drawing is DrawingGroup logoGroup)
         {
             foreach (var child in logoGroup.Children)
             {
                 if (child is GeometryDrawing gd &&
-                    gd.Brush is SolidColorBrush sb &&
-                    sb.Color == theme.BrandAccentBrush.Color)
+                    gd.Brush is SolidColorBrush sb)
                 {
-                    logoUsesBrand = true;
-                    break;
+                    if (sb.Color == theme.CurrentLogoPalette.Body) logoUsesBody = true;
+                    if (sb.Color == theme.CurrentLogoPalette.Shadow) logoUsesShadow = true;
                 }
             }
         }
-        Check("图标图层使用了当前品牌色", logoUsesBrand,
-              $"BrandAccentBrush={theme.BrandAccentBrush.Color}");
+
+        Check("图标主体使用当前调色板的主体色", logoUsesBody,
+              $"Body={theme.CurrentLogoPalette.Body}");
+        Check("图标阴影使用当前调色板的阴影色", logoUsesShadow,
+              $"Shadow={theme.CurrentLogoPalette.Shadow}");
 
         // ToolTip 隐式样式：必须存在、必须是我们重写过的模板（无系统小箭头）
         var tipStyle = Application.Current.TryFindResource(typeof(System.Windows.Controls.ToolTip))

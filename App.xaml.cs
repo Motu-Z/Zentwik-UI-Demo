@@ -43,15 +43,21 @@ public partial class App : Application
         {
             AttachConsole(ATTACH_PARENT_PROCESS);
 
-            string probeIcon = System.IO.Path.Combine(
-                AppContext.BaseDirectory, "Assets", "ZentwikTray.ico");
+            AppThemeService.Instance.Initialize();
+
+            var probePalette = LogoPaletteFactory.BuildForTray(
+                darkTaskbar: !SystemTheme.IsSystemLightTheme());
 
             using var probeTray = new TrayIconService();
-            bool probeOk = probeTray.Initialize(probeIcon);
+            bool probeOk = probeTray.Initialize(
+                AppThemeService.Instance.BuildLogoDrawing,
+                probePalette.Body,
+                probePalette.Shadow);
 
-            Console.WriteLine($"trayprobe: icon       = {probeIcon}");
-            Console.WriteLine($"trayprobe: fileExists = {System.IO.File.Exists(probeIcon)}");
             Console.WriteLine($"trayprobe: available  = {probeOk}");
+            Console.WriteLine($"trayprobe: pixelSize  = {probeTray.RenderedPixelSize}");
+            Console.WriteLine($"trayprobe: body       = {probePalette.Body}");
+            Console.WriteLine($"trayprobe: shadow     = {probePalette.Shadow}");
             Console.Out.Flush();
 
             Shutdown(0);
@@ -158,6 +164,14 @@ public partial class App : Application
                 {
                     ScreenshotHelper.Capture(window, outPath);
                 }
+
+                // --traymenu : 额外输出托盘菜单与托盘图标的离屏渲染
+                if (e.Args.Contains("--traymenu"))
+                {
+                    ScreenshotHelper.CaptureTrayMenu(outPath);
+                    ScreenshotHelper.CaptureTrayIcon(outPath);
+                }
+
                 Shutdown(0);
             });
         }
@@ -170,15 +184,27 @@ public partial class App : Application
     private TrayIconService? _tray;
 
     /// <summary>
-    /// 创建托盘图标并接上主窗口的显示 / 隐藏 / 退出。
+    /// 托盘菜单宿主 —— 同样必须持有引用，
+    /// 否则 0x1 的宿主窗口被回收，Popup 就没有 owner 而无法显示。
+    /// </summary>
+    private TrayMenuPresenter? _trayMenu;
+
+    /// <summary>
+    /// 创建托盘图标并接上主窗口的显示 / 退出。
     /// </summary>
     private void SetupTray(MainWindow window)
     {
-        string iconPath = System.IO.Path.Combine(
-            AppContext.BaseDirectory, "Assets", "ZentwikTray.ico");
+        var theme = AppThemeService.Instance;
 
         var tray = new TrayIconService();
-        if (!tray.Initialize(iconPath))
+
+        // 托盘图标用中性灰，**不跟随强调色** ——
+        // 任务栏背景由系统决定，用户挑的强调色在那里没有意义。
+        // 深色任务栏需要亮图标才看得见，浅色任务栏需要暗图标。
+        var trayPalette = LogoPaletteFactory.BuildForTray(
+            darkTaskbar: !SystemTheme.IsSystemLightTheme());
+
+        if (!tray.Initialize(theme.BuildLogoDrawing, trayPalette.Body, trayPalette.Shadow))
         {
             // 托盘不可用 → 关闭按钮必须正常退出，
             // 否则用户会把应用「关掉」却再也打不开。
@@ -188,7 +214,7 @@ public partial class App : Application
 
         _tray = tray;
 
-        tray.ShowRequested += (_, _) =>
+        void ShowMainWindow()
         {
             window.Show();
             if (window.WindowState == WindowState.Minimized)
@@ -196,15 +222,39 @@ public partial class App : Application
                 window.WindowState = WindowState.Normal;
             }
             window.Activate();
-        };
+        }
 
-        tray.HideRequested += (_, _) => window.Hide();
+        tray.ShowRequested += (_, _) => ShowMainWindow();
 
-        tray.ExitRequested += (_, _) => window.ExitApplication();
+        // ---- 托盘右键菜单（WPF 自绘）----
+        // 菜单挂在独立的 0x1 宿主窗口上，
+        // 所以主窗口收进托盘（被隐藏）时菜单照样能弹出来。
+        var menuPresenter = new TrayMenuPresenter();
+        _trayMenu = menuPresenter;
+
+        menuPresenter.ShowRequested += (_, _) => ShowMainWindow();
+        menuPresenter.ExitRequested += (_, _) => window.ExitApplication();
+
+        tray.MenuRequested += (_, screenPoint) => menuPresenter.Open(screenPoint);
 
         // 托盘可用后，关闭按钮改为收进托盘
         window.MinimizeToTrayEnabled = true;
 
-        Exit += (_, _) => _tray?.Dispose();
+        // 系统任务栏明暗变化 → 托盘图标跟着换配色。
+        // 【为什么不是订阅 ThemeChanged】
+        // ThemeChanged 表示「应用内明暗」；而任务栏明暗是系统决定的，
+        // 用户把应用设成深色、系统任务栏是浅色时，托盘仍需要深色图标。
+        theme.SystemThemeChanged += (_, _) =>
+        {
+            var palette = LogoPaletteFactory.BuildForTray(
+                darkTaskbar: !SystemTheme.IsSystemLightTheme());
+            tray.UpdateColors(palette.Body, palette.Shadow);
+        };
+
+        Exit += (_, _) =>
+        {
+            _tray?.Dispose();
+            _trayMenu?.Dispose();
+        };
     }
 }

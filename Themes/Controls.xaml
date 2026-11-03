@@ -167,6 +167,98 @@
         </Setter>
     </Style>
 
+    <!--
+        ==================== 托盘菜单项 ====================
+
+        【为什么托盘菜单要自己画】
+        Win32 的 CreatePopupMenu 走的是系统菜单渲染：
+          · 在深色任务栏上仍是浅色米白气泡，与应用主题彻底割裂；
+          · 字号、字体、行高都不受应用控制；
+          · 想改深浅只能靠 uxtheme 的 undocumented API
+            （SetPreferredAppMode / AllowDarkModeForWindow），
+            而这两个在较新的 Windows 上已被移除 ——
+            实测本机 uxtheme.dll 只导出 SetWindowTheme。
+        所以菜单改成 WPF 自绘：外观完全跟随主题令牌，
+        行为（定位、点击外部关闭、ESC 关闭）由 Popup 保证。
+    -->
+    <Style x:Key="TrayMenuItemStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusRing}" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="Transparent"
+                            CornerRadius="5"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <!--
+                            ContentPresenter 的 HorizontalAlignment 决定 **child 在 Presenter 里怎么排**：
+                              · Stretch → child 拉伸到 Presenter 宽度
+                              · Left/Center/Right → child 按自己的 DesiredSize 宽度排
+
+                            之前这里绑了 Button 的 HorizontalContentAlignment（=Left），
+                            child 就被按 DesiredSize 宽度排列。
+                            而 TextBlock 的 DesiredSize.Width 是按字体 advance 算的
+                            （中文 13px × 4 字 = 52px），一旦实际字形墨迹略微超出
+                            advance（Segoe UI Variable Text → 雅黑的回退链尤其明显），
+                            最后一个字就被切掉右半边 ——
+                            表现就是「显示窗口」缺半个「口」、「退出程序」缺半个「程」。
+
+                            所以这里不设 HorizontalAlignment，保持默认 Stretch：
+                            child 拉伸到可用宽度，文字在 TextBlock 内部自然左对齐，
+                            既不裁切也不换行。
+                        -->
+                        <ContentPresenter VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"
+                                          TextElement.FontSize="{TemplateBinding FontSize}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource ItemHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource TextMetaBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="TrayMenuSeparatorStyle" TargetType="Border">
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="10,4" />
+        <Setter Property="Background" Value="{DynamicResource BorderColorBrush}" />
+    </Style>
+
+    <!--
+        ==================== 托盘菜单项文字 ====================
+
+        【为什么文字要带右边距】
+        ContentPresenter 会把 child 裁到自己的 bounds。
+        而 child（TextBlock）的 DesiredSize.Width 是按字体 advance 算的，
+        中文字体链（Segoe UI Variable Text → Segoe UI → 雅黑）在 fallback 时
+        实际渲染出的墨迹宽度会略大于 advance 总和 ——
+        于是宽度一旦恰好等于 advance 总和，最后一个字的右缘就被切掉。
+
+        现象：「显示窗口」缺半个「口」、「退出程序」缺半个「程」；
+        而同一行里的「禁用配置（预留）」是普通 TextBlock（宽度大于文字宽），
+        一个字都没少。
+
+        Padding 右侧留 8px 余量后，TextBlock 的 DesiredSize 比文字墨迹宽，
+        ContentPresenter 裁不到字形 —— 且这与具体字体无关，换字体也不会复发。
+    -->
+    <Style x:Key="TrayMenuItemTextStyle" TargetType="TextBlock">
+        <Setter Property="Padding" Value="0,0,8,0" />
+        <Setter Property="TextWrapping" Value="NoWrap" />
+    </Style>
+
     <!-- ==================== 分段控件（RadioButton 重写） ==================== -->
     <Style x:Key="SegmentRadioButtonStyle" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />

@@ -110,42 +110,90 @@ public sealed class AppThemeService
     public DrawingImage BrandLogoImage { get; private set; } = new();
 
     /// <summary>
-    /// 图标几何在 1024 网格里的合并包围盒（transform 已烘焙进坐标）。
-    /// </summary>
-    private static readonly Rect BrandLogoBounds = new(166, 35, 705, 943);
-
-    /// <summary>
-    /// 取某一层该用的品牌色画刷。
+    /// 图标调色板 —— 图标三层各自用什么颜色。
     /// </summary>
     /// <remarks>
-    /// 对应原 SVG 的三层灰阶：第 1 层主体 = 主色，
-    /// 第 3/5 层 = 高光，其余 = 中间调。
+    /// 图标几何共 3 层：第 1 层是主体，第 2/3 层是阴影。
+    /// 不同方案下三层的取色规则不同，拆成独立结构便于对比与切换。
     /// </remarks>
-    private Brush BrandBrushForLayer(int layer) => layer switch
-    {
-        1 => BrandAccentBrush,
-        3 or 5 => BrandAccentLightBrush,
-        _ => BrandAccentMidBrush,
-    };
+    /// <param name="Body">主体层（第 1 层）颜色。</param>
+    /// <param name="Shadow">阴影层（第 2/3 层）颜色。</param>
+    public readonly record struct LogoPalette(Color Body, Color Shadow);
 
     /// <summary>
-    /// 用当前品牌色重建应用图标。
+    /// 当前图标调色板。
+    /// </summary>
+    public LogoPalette CurrentLogoPalette { get; private set; }
+
+    /// <summary>
+    /// 取某一层该用的颜色画刷。
+    /// </summary>
+    /// <remarks>
+    /// 第 1 层 = 主体，第 2/3 层 = 阴影。
+    /// </remarks>
+    private Brush BrushForLayer(int layer) => layer == 1
+        ? new SolidColorBrush(CurrentLogoPalette.Body)
+        : new SolidColorBrush(CurrentLogoPalette.Shadow);
+
+    /// <summary>
+    /// 用当前调色板重建应用图标。
     /// </summary>
     private void RebuildBrandLogo()
     {
         var resources = Application.Current.Resources;
         var group = new DrawingGroup();
 
-        for (int i = 1; i <= 6; i++)
+        for (int i = 1; i <= 3; i++)
         {
             if (resources["BrandLogoPath" + i] is not PathGeometry geo) continue;
-            group.Children.Add(new GeometryDrawing(BrandBrushForLayer(i), null, geo));
+            group.Children.Add(new GeometryDrawing(BrushForLayer(i), null, geo));
         }
 
         // DrawingGroup 本身就是 Drawing，包围盒由内容自动计算
-        // （正好等于六层合并后的 166,35 - 871,978）。
+        // （正好等于三层合并后的 86,15 - 933,991）。
         BrandLogoImage = new DrawingImage(group);
         _accentDictionary["BrandLogoImage"] = BrandLogoImage;
+
+        // 托盘用的是同一份矢量内容（Drawing 而非 DrawingImage，
+        // 因为托盘渲染器要拿到可绘制的几何，而不是一张图片）
+        BrandLogoDrawing = group;
+    }
+
+    /// <summary>
+    /// 图标矢量内容（Drawing）—— 托盘渲染器直接拿它画 HICON。
+    /// </summary>
+    public Drawing BrandLogoDrawing { get; private set; } = new DrawingGroup();
+
+    /// <summary>
+    /// 按给定配色组装一份图标矢量内容。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么需要「按需组装」而不是只有一份固定 drawing】
+    /// 应用内图标与托盘图标用的是**同一份几何、不同的一套颜色**：
+    ///   · 应用内 → 主体 = 用户挑的强调色（品牌识别）
+    ///   · 托盘   → 主体 = 中性灰（任务栏背景由系统决定，
+    ///              用户挑的强调色在那里没有意义，
+    ///              深色任务栏上需要亮色图标才看得见）
+    /// 所以这里把「几何」和「颜色」拆开：几何取自资源字典（只读），
+    /// 颜色由调用方给 —— 组装出的 Drawing 不进资源字典，
+    /// 也就绕开了 ResourceDictionary 冻结 DynamicResource 的坑。
+    /// </remarks>
+    /// <param name="body">主体层（第 1 层）颜色。</param>
+    /// <param name="shadow">阴影层（第 2/3 层）颜色。</param>
+    public Drawing BuildLogoDrawing(Color body, Color shadow)
+    {
+        var resources = Application.Current.Resources;
+        var group = new DrawingGroup();
+
+        for (int i = 1; i <= 3; i++)
+        {
+            if (resources["BrandLogoPath" + i] is not PathGeometry geo) continue;
+
+            var brush = new SolidColorBrush(i == 1 ? body : shadow);
+            group.Children.Add(new GeometryDrawing(brush, null, geo));
+        }
+
+        return group;
     }
 
     private AppThemeService() { }
@@ -164,6 +212,16 @@ public sealed class AppThemeService
 
     /// <summary>主题发生变化（明暗切换）时触发。</summary>
     public event EventHandler<bool>? ThemeChanged;
+
+    /// <summary>
+    /// 系统（任务栏）明暗发生变化 —— 与应用内主题无关。
+    /// </summary>
+    /// <remarks>
+    /// 托盘图标订阅它：任务栏背景是系统决定的，
+    /// 深色任务栏要用亮图标、浅色任务栏要用暗图标，
+    /// 这个判断与应用内选了浅色还是深色无关。
+    /// </remarks>
+    public event EventHandler? SystemThemeChanged;
 
     /// <summary>强调色发生变化时触发。</summary>
     public event EventHandler<Color>? AccentChanged;
@@ -275,6 +333,14 @@ public sealed class AppThemeService
     /// </remarks>
     public void RefreshFromSystem()
     {
+        // 系统（任务栏）明暗可能变了 —— 托盘图标配色依赖它。
+        // 【为什么不挂在 ThemeChanged 上】
+        // ThemeChanged 表示「应用内明暗」，只有 Mode == System 时才会变。
+        // 但任务栏的明暗是系统决定的，与应用内选浅色/深色无关 ——
+        // 用户把应用设成深色、系统任务栏是浅色，托盘仍要用深色图标。
+        // 所以这里无条件通知，由订阅方自己比较颜色决定要不要重绘。
+        SystemThemeChanged?.Invoke(this, EventArgs.Empty);
+
         if (Mode == AppTheme.System)
         {
             ApplyResolvedTheme(SystemTheme.IsSystemLightTheme() ? AppTheme.Light : AppTheme.Dark);
@@ -423,7 +489,23 @@ public sealed class AppThemeService
         BrandAccentLightBrush = new SolidColorBrush(light);
         _accentDictionary["BrandAccentLightBrush"] = BrandAccentLightBrush;
 
-        // 图标是按品牌色组装的 → 品牌色变了，图标必须一起重建
+        // 图标配色依赖强调色 + 当前表面色 → 必须一起重算
+        RefreshLogoPalette();
+    }
+
+    /// <summary>
+    /// 图标所在表面的颜色（卡片底色）—— 用于计算图标与背景的对比度。
+    /// </summary>
+    private Color LogoSurfaceColor => IsDark
+        ? Color.FromRgb(0x23, 0x23, 0x23)
+        : Color.FromRgb(0xFF, 0xFF, 0xFF);
+
+    /// <summary>
+    /// 重算图标调色板并重建图标。
+    /// </summary>
+    public void RefreshLogoPalette()
+    {
+        CurrentLogoPalette = LogoPaletteFactory.Build(AccentColor, IsDark, LogoSurfaceColor);
         RebuildBrandLogo();
     }
 
