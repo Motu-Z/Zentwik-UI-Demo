@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Windows.Media;
 using ZentwikThemeDemo.Services;
 
@@ -271,4 +272,27 @@ public sealed class SettingsViewModel : ViewModelBase
     /// 品牌色 twik：H+20°、S+15%、L 按主题加亮 / 压暗。
     /// </summary>
     public Color BrandAccentColor => ColorMath.DeriveBrandColor(_theme.AccentColor, _theme.IsDark);
+
+    /// <summary>
+    /// 应用版本号（显示在关于卡片上）。
+    /// </summary>
+    /// <remarks>
+    /// 从程序集元数据读取，不硬编码 —— 改 csproj 的 Version 后
+    /// 关于卡片自动跟随，不需要动 UI 代码。
+    /// InformationalVersion 可能带 "+commit" 后缀，只取主版本号。
+    /// </remarks>
+    public string AppVersion
+    {
+        get
+        {
+            var version = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion;
+
+            if (string.IsNullOrWhiteSpace(version)) return "v0.0.0";
+
+            int plus = version.IndexOf('+');
+            return "v" + (plus > 0 ? version[..plus] : version);
+        }
+    }
 }

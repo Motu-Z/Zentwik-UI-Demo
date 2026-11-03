@@ -29,6 +29,28 @@ public partial class SettingsView : UserControl
     {
         InitializeComponent();
 
+        // ============================================================
+        // 【必须在这里直接订阅 PropertyChanged】
+        //
+        // 根因：DataContext 是在 XAML 里通过
+        //   <UserControl.DataContext><vm:SettingsViewModel /></UserControl.DataContext>
+        // 赋值的 —— 这发生在 InitializeComponent() **内部**，
+        // 而 DataContextChanged 事件也是在那一刻触发的。
+        //
+        // 构造函数末尾再写 `DataContextChanged += OnDataContextChanged;`
+        // 已经**错过**了那次触发 → PropertyChanged 从未订阅 →
+        // 切换「个性 / 系统」时 IsColorPanelVisible 变了但没人知道 →
+        // 彩虹面板永远不展开。
+        //
+        // 修法：InitializeComponent() 之后立刻取当前 DataContext 订阅。
+        // DataContextChanged 仍然保留，作为「后续换 VM」的兜底。
+        // ============================================================
+        if (DataContext is SettingsViewModel initialVm)
+        {
+            initialVm.PropertyChanged += OnVmPropertyChanged;
+            _subscribedVm = initialVm;
+        }
+
         // 视图加载完成后再解除 HueValue 的初始化保护 ——
         // TwoWay 绑定在加载期会把源值回写一次，
         // 那次回写不应产生副作用（否则初始强调色会被 hsl(h,85,65) 覆盖）。
@@ -41,9 +63,7 @@ public partial class SettingsView : UserControl
             }
         };
 
-        // 展开/收起由 ViewModel 的 IsColorPanelVisible 驱动。
-        // 这里监听属性变化，把状态翻译成动画 ——
-        // 判定逻辑仍在 ViewModel，View 只执行。
+        // 换 VM 时的兜底（正常路径不会触发，但保留以防万一）
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -56,10 +76,21 @@ public partial class SettingsView : UserControl
 
         if (e.NewValue is SettingsViewModel newVm)
         {
-            newVm.PropertyChanged += OnVmPropertyChanged;
+            // 构造函数里已经订阅过初始 VM，这里再订阅一次会重复触发动画。
+            // 去重：同一个 VM 不重复订阅。
+            if (!ReferenceEquals(newVm, _subscribedVm))
+            {
+                _subscribedVm?.PropertyChanged -= OnVmPropertyChanged;
+                newVm.PropertyChanged += OnVmPropertyChanged;
+                _subscribedVm = newVm;
+            }
+
             ApplyPanelState(newVm.IsColorPanelVisible, animate: false);
         }
     }
+
+    /// <summary>当前已订阅 PropertyChanged 的 VM（用于避免重复订阅）。</summary>
+    private SettingsViewModel? _subscribedVm;
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

@@ -176,17 +176,44 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <!-- 颜色预览色块 -->
-                                <Border Grid.Column="0"
-                                        Width="44" Height="44"
-                                        CornerRadius="8"
-                                        Background="{DynamicResource AccentBrush}"
-                                        VerticalAlignment="Center">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270"
-                                                          Color="Black" Opacity="0.2" />
-                                    </Border.Effect>
-                                </Border>
+                                <!--
+                                    颜色预览色块。
+
+                                    【为什么不用 DropShadowEffect】
+                                    WPF 的阴影是按元素**外接矩形**计算的，
+                                    不感知 Border 的圆角 —— 圆角处会残留
+                                    直角暗块，就是截图里那个「阴角」。
+
+                                    这里改成参考 HTML 的做法：强调色辉光
+                                    （accent 色的 8px 模糊扩散，无偏移）。
+
+                                    实现方式：外层一个更大的圆角 Border 铺强调色
+                                    并降低不透明度（充当扩散的辉光），
+                                    内层实色方块盖在上面。
+                                    纯几何、无滤镜，任何缩放下都不会有残留。
+                                -->
+                                    <Grid VerticalAlignment="Center">
+                                        <!--
+                                            辉光层：略大的圆角方块，模拟 8px 模糊扩散。
+
+                                            圆角半径按尺寸**等比放大**（58 × 0.24 ≈ 14，
+                                            对应内层 44 × 0.18 ≈ 8 的同一比例）——
+                                            否则大尺寸配小圆角会看起来像个方块。
+                                        -->
+                                        <Border x:Name="SwatchGlow"
+                                                Width="58" Height="58"
+                                                CornerRadius="14"
+                                                Background="{DynamicResource AccentBrush}"
+                                                Opacity="0.22" />
+
+                                        <!-- 实色层 -->
+                                        <Border x:Name="SwatchFill"
+                                                Width="44" Height="44"
+                                                CornerRadius="8"
+                                                Background="{DynamicResource AccentBrush}"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center" />
+                                    </Grid>
 
                                 <!-- 彩虹滑块 -->
                                 <Slider Grid.Column="1"
@@ -196,12 +223,26 @@
                                         Value="{Binding HueValue, Mode=TwoWay}"
                                         VerticalAlignment="Center" />
 
-                                <!-- HEX 输入框 -->
+                                <!--
+                                    HEX 输入框。
+
+                                    【为什么不用等宽字体】
+                                    实测（本机 13px）：等宽字体里 F 的横杠宽
+                                    6~7px，几乎占满整个字宽 ——
+                                    于是 "#FFFFFF" 六个 F 的横杠横向对齐连成一条线，
+                                    看起来像被删除线划掉了。
+
+                                    比例字体（Segoe UI）F 的字宽更窄，
+                                    横杠之间有明显空隙，不再连成一线。
+                                    颜色值本身是 6 位十六进制，比例字体下
+                                    依然清晰易读，且不再有「被划掉」的错觉。
+                                -->
                                 <TextBox Grid.Column="2"
-                                         Width="90" Height="32"
+                                         Width="92" Height="34"
                                          Style="{StaticResource AppTextBoxStyle}"
-                                         FontFamily="{DynamicResource AppMonoFontFamily}"
+                                         FontFamily="{DynamicResource AppFontFamily}"
                                          FontSize="13"
+                                         FontWeight="SemiBold"
                                          TextAlignment="Center"
                                          VerticalContentAlignment="Center"
                                          Text="{Binding HexInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -213,13 +254,76 @@
                 </StackPanel>
             </Border>
 
-            <!-- 无属性文本占位 -->
-            <TextBlock Text="无属性文本"
-                       FontSize="14"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
-                       TextWrapping="Wrap"
-                       LineHeight="22"
-                       Padding="0,16,0,0" />
+            <!-- ==================== 关于卡片 ==================== -->
+            <!--
+                关于卡片：应用图标 + 名称 + 版本号 + 一句话简介 + 版权。
+
+                版本号从程序集元数据读取（AppVersion 属性），
+                不在这里硬编码 —— 版本随 csproj 变化时卡片自动跟随。
+            -->
+            <Border Style="{StaticResource CardStyle}"
+                    Margin="0,0,0,24">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 应用图标：与侧栏同一枚自绘 Z 字形 -->
+                    <Border Grid.Column="0"
+                            Width="52" Height="52"
+                            CornerRadius="10"
+                            Background="{DynamicResource TextMetaBrush}"
+                            ClipToBounds="True"
+                            VerticalAlignment="Top">
+                        <Path Data="M4.8 0 H32 V8 L14.4 32 H0 V24 L17.6 8 H4.8 Z"
+                              Fill="{DynamicResource BrandAccentBrush}"
+                              Width="34" Height="34"
+                              Stretch="Fill"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Path.RenderTransform>
+                                <TransformGroup>
+                                    <media:SkewTransform AngleX="-15" AngleY="0" CenterX="17" CenterY="17" />
+                                    <media:ScaleTransform ScaleX="1.05" ScaleY="1.05" CenterX="17" CenterY="17" />
+                                </TransformGroup>
+                            </Path.RenderTransform>
+                        </Path>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="20,0,0,0">
+                        <!-- 名称 + 版本号 -->
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Zentwik"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Border Margin="10,0,0,0"
+                                    Padding="8,2"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentBrush}"
+                                    CornerRadius="4">
+                                <TextBlock Text="{Binding AppVersion}"
+                                           FontSize="12"
+                                           FontFamily="{DynamicResource AppMonoFontFamily}"
+                                           Foreground="{DynamicResource AccentForegroundBrush}" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 一句话简介 -->
+                        <TextBlock Text="Windows 端调校与自动化工具"
+                                   Margin="0,8,0,0"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                        <!-- 版权行 -->
+                        <TextBlock Text="© 2026 Zentwik"
+                                   Margin="0,12,0,0"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMetaBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

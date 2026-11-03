@@ -9,23 +9,70 @@
       主题切换时换的是资源字典，StaticResource 在加载时已解析固定，
       切主题后不会跟着变。全局默认样式里必须用 DynamicResource。
 
-      【FocusVisualStyle 一律置 null —— 彻底消灭原生虚线框】
-      WPF 的默认焦点视觉是一圈**点划线**矩形（系统主题绘制），
-      鼠标点过任何控件后就会留下那圈丑陋的虚线。
-      FocusVisualStyle 是 FocusVisual 附加样式，只能显式置 null 才彻底消失。
-      键盘可达性不丢：各样式自带的 IsKeyboardFocused Trigger
-      会画一条**实线**强调色边框作为焦点提示。
+      ============================================================
+      关于「虚线焦点框」——本文件里最重要的一件事
+      ============================================================
 
-      【分段控件】
-      RadioButton + ControlTemplate 重写：外观是「反白选中 + 文字加粗」，
-      语义仍是 RadioButton（GroupName 互斥 + 键盘可达 + 读屏可识别）。
-      不改成 Button 是因为 Button 没有「选中」语义，键盘操作会退化。
+      WPF 的默认焦点视觉是系统主题绘制的一圈**点划线**矩形，
+      样式形如：
 
-      【彩虹滑块】
-      Slider + ControlTemplate 重写：Track 背景是 7 色 LinearGradientBrush，
-      Thumb 是带阴影的白色椭圆。注意 Thumb 必须在 Track 内部，
-      否则 Slider 的 Value 到像素的映射会丢失，拖动会错位。
+        <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}">
+          <Setter Property="Control.Template">
+            <Setter.Value>
+              <ControlTemplate>
+                <Rectangle StrokeDashArray="1 2" ... />
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Style>
+
+      【为什么 FocusVisualStyle="{x:Null}" 解决不了】
+      x:Null 表示「没有自定义焦点视觉」—— WPF 会**回退到系统默认**，
+      虚线照旧出现。实测：设成 null 后控件的 FocusVisualStyle
+      仍然解析到 TargetType=IFrameworkInputElement 的系统样式。
+      要真正消掉虚线，必须给一个**空模板**的 Style。
+
+      【本文件的做法】
+      两种焦点样式，按控件用途选用：
+        · NoFocusVisual     —— 空模板，完全不画任何焦点框
+                                （输入框、滚动条这类自带选中指示的控件）
+        · KeyboardFocusRing —— 自绘**实线**强调色圆角框
+                                （导航项、分段控件）
+      两者都覆盖掉系统默认的虚线，且因为走 FocusVisualStyle 机制，
+      WPF 只在**键盘导航**时显示它 —— 鼠标点击不会出现，
+      符合 Windows 惯例。
+
+      【兜底】
+      Services/FocusVisual.cs 里注册了全局类处理器，
+      把任何漏设的控件的系统默认焦点样式替换成空模板，
+      保证「应用内没有虚线」是硬保证，而不是靠逐个控件记得设置。
     -->
+
+    <!-- ==================== 焦点视觉 ==================== -->
+
+    <!-- 空模板：不画任何焦点框 -->
+    <Style x:Key="NoFocusVisual" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Control" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 自绘实线焦点环：强调色 2px 圆角框 -->
+    <Style x:Key="KeyboardFocusRing" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Control">
+                    <Border Margin="-2"
+                            BorderBrush="{DynamicResource AccentBrush}"
+                            BorderThickness="2"
+                            CornerRadius="6"
+                            SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- ==================== 卡片 ==================== -->
     <!--
@@ -57,8 +104,8 @@
         <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="True" />
-        <!-- 禁用原生虚线焦点框 -->
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <!-- 焦点指示：自绘实线环，替换系统点划线 -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusRing}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -81,16 +128,15 @@
                         </Trigger>
 
                         <!--
-                            键盘焦点：画**实线**强调色边框。
-                            注意这与被禁用的原生虚线框是两回事 ——
-                            前者是本样式自己画的实线，后者是系统画的点划线。
-                        -->
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="Root" Property="BorderThickness" Value="1" />
-                        </Trigger>
+                            选中：背景反白 + 文字加粗。
 
-                        <!-- 选中：背景反白 + 文字加粗 -->
+                            【注意这里没有 IsKeyboardFocused 的边框 Trigger】
+                            焦点指示完全交给 FocusVisualStyle（KeyboardFocusRing）。
+                            原因：IsKeyboardFocused 在**鼠标点击**后同样为 true，
+                            若用它画框，鼠标点一下就会留下一个框 —— 这正是
+                            之前「聚焦不正确」的来源。FocusVisualStyle 由 WPF
+                            只在键盘导航时触发，行为与 Windows 原生一致。
+                        -->
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Root" Property="Background" Value="{DynamicResource WindowBgBrush}" />
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -108,7 +154,8 @@
         <Setter Property="IsMoveToPointEnabled" Value="True" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="True" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <!-- 滑块本身已有白色圆点作指示，不需要额外焦点框 -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
@@ -124,14 +171,18 @@
                             这里给渐变加左右各 9px 的 Margin（= Thumb 18px 的一半），
                             使渐变区间与 Thumb 中心行程严格重合 ——
                             拖到最左时 Thumb 圆心正好落在纯红端，最右落在纯红端。
+
+                            【为什么不要 BorderThickness】
+                            之前轨道画了 1px 边框。Border 的圆角是「外圆角」，
+                            1px 描边贴着它画会形成**内外两层半径**，
+                            红端看上去像被切掉一个角（内外圆角不一致）。
+                            纯渐变 + 单一 CornerRadius 不存在这个问题。
                         -->
                         <Border x:Name="TrackBorder"
                                 Height="6"
                                 Margin="9,0"
                                 CornerRadius="3"
-                                VerticalAlignment="Center"
-                                BorderThickness="1"
-                                BorderBrush="{DynamicResource BorderLightBrush}">
+                                VerticalAlignment="Center">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                                     <GradientStop Color="#FFFF0000" Offset="0.00" />
@@ -196,8 +247,8 @@
         <Setter Property="FontSize" Value="13.5" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="True" />
-        <!-- 禁用原生虚线焦点框 -->
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <!-- 焦点指示：自绘实线环，替换系统点划线 -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusRing}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -233,11 +284,11 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
-                        <!-- 键盘焦点：实线边框（非系统点划线） -->
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="Root" Property="BorderThickness" Value="1" />
-                        </Trigger>
+                        <!--
+                            刻意**没有** IsKeyboardFocused 的边框 Trigger ——
+                            焦点指示全部交给 FocusVisualStyle（KeyboardFocusRing）。
+                            原因见 SegmentRadioButtonStyle 里的说明。
+                        -->
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -252,7 +303,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="False" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -306,9 +357,10 @@
         <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="SelectionOpacity" Value="0.4" />
-        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="Padding" Value="8,4" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <!-- 输入框靠边框变色提示聚焦，不需要额外的焦点环 -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
@@ -318,9 +370,21 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="5"
                             SnapsToDevicePixels="True">
+                        <!--
+                            PART_ContentHost 必须是 ScrollViewer（WPF 的硬性要求）。
+
+                            【为什么 VerticalAlignment 不能设 Center】
+                            设了 Center 后，内容高度超过可用空间时会**向上溢出**
+                            并被裁切 —— 表现就是文字只显示上半截。
+                            改成 Stretch 让它撑满，行高不够时由外层 Border 自然增高，
+                            文字永远完整。
+
+                            高度由使用方决定（HEX 框用 Height="32"），
+                            但字号大时需留足余量，因此这里把 MinHeight 也放开。
+                        -->
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      VerticalAlignment="Stretch"
                                       Focusable="False"
                                       HorizontalScrollBarVisibility="Hidden"
                                       VerticalScrollBarVisibility="Hidden" />
@@ -376,7 +440,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Width" Value="10" />
         <Setter Property="MinWidth" Value="10" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">

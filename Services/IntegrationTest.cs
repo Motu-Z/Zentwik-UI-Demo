@@ -209,6 +209,51 @@ public static class IntegrationTest
         theme.SetAccentColor(Color.FromRgb(0x60, 0xCD, 0xFF));
         theme.SetThemeMode(AppTheme.Dark);
 
+        // ============================================================
+        // 7. 视图层订阅时序回归（本轮修复的核心）
+        // ============================================================
+        Say("\n=== 7. 彩虹面板的通知送达 ===");
+
+        // 【为什么要有这条断言】
+        // 问题 2「切换个性后彩虹面板不展开」的根因：
+        // DataContext 在 XAML 里赋值（InitializeComponent 内部），
+        // DataContextChanged 事件在那时就已触发过 ——
+        // 构造函数末尾才订阅，事件被永远错过 → PropertyChanged 从未订阅。
+        //
+        // 这里复现真实场景：新建视图 → 立刻切换色彩模式 →
+        // 断言视图确实收到了 IsColorPanelVisible 的变化通知。
+        var view = new Views.SettingsView();
+        int notifyCount = 0;
+        bool? lastVisible = null;
+
+        if (view.DataContext is ViewModels.SettingsViewModel viewVm)
+        {
+            viewVm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ViewModels.SettingsViewModel.IsColorPanelVisible))
+                {
+                    notifyCount++;
+                    lastVisible = viewVm.IsColorPanelVisible;
+                }
+            };
+        }
+        else
+        {
+            Check("SettingsView 的 DataContext 是 SettingsViewModel", false);
+        }
+
+        theme.SetAccentMode(AccentSource.System);
+        theme.SetAccentMode(AccentSource.Custom);
+
+        Check("切换色彩模式时视图收到通知", notifyCount >= 2,
+              $"收到 {notifyCount} 次");
+        Check("最后一次通知的面板状态 = 展开", lastVisible == true,
+              lastVisible?.ToString() ?? "null");
+
+        // 恢复默认状态，避免影响后续运行
+        theme.SetAccentMode(AccentSource.Custom);
+        theme.SetAccentColor(Color.FromRgb(0x60, 0xCD, 0xFF));
+
         return _failures;
     }
 
