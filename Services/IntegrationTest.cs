@@ -1,6 +1,7 @@
 using System.Text;
 using System.Windows;
 using System.Linq;
+using System.Windows.Controls;
 using System.Windows.Media;
 using ZentwikThemeDemo.ViewModels;
 
@@ -275,6 +276,79 @@ public static class IntegrationTest
         theme.SetAccentMode(AccentSource.Custom);
         theme.SetAccentColor(Color.FromRgb(0x60, 0xCD, 0xFF));
 
+        // ============================================================
+        // 8. 图标与 ToolTip 的主题跟随
+        // ============================================================
+        Say("\n=== 8. 图标 / ToolTip 的主题跟随 ===");
+
+        // 【图标为什么要单独断言】
+        // ResourceDictionary 里的 DrawingImage 属于 Freezable，
+        // 加载时被冻结 → 内部 DynamicResource 当场求值固化 →
+        // 图标永远停在初始颜色，从来没跟随过主题。
+        // 现在改成由 AppThemeService 在代码里组装，换色时整体重建。
+        // 这里断言：图标实例在换色后确实换了（不是同一个对象）。
+        var logoBefore = theme.BrandLogoImage;
+        var logoBrushBefore = theme.BrandAccentBrush;
+
+        theme.SetAccentColor(Color.FromRgb(0xE0, 0x30, 0x30));
+
+        Check("换色后品牌色画刷被替换", !ReferenceEquals(logoBrushBefore, theme.BrandAccentBrush),
+              $"old={logoBrushBefore.Color} new={theme.BrandAccentBrush.Color}");
+        Check("换色后应用图标被重建", !ReferenceEquals(logoBefore, theme.BrandLogoImage),
+              "BrandLogoImage 实例已更换");
+
+        // 图标必须真的用上了新的品牌色（不能只是换了实例）
+        bool logoUsesBrand = false;
+        if (theme.BrandLogoImage.Drawing is DrawingGroup logoGroup)
+        {
+            foreach (var child in logoGroup.Children)
+            {
+                if (child is GeometryDrawing gd &&
+                    gd.Brush is SolidColorBrush sb &&
+                    sb.Color == theme.BrandAccentBrush.Color)
+                {
+                    logoUsesBrand = true;
+                    break;
+                }
+            }
+        }
+        Check("图标图层使用了当前品牌色", logoUsesBrand,
+              $"BrandAccentBrush={theme.BrandAccentBrush.Color}");
+
+        // ToolTip 隐式样式：必须存在、必须是我们重写过的模板（无系统小箭头）
+        var tipStyle = Application.Current.TryFindResource(typeof(System.Windows.Controls.ToolTip))
+                       as Style;
+        Check("ToolTip 存在全局隐式样式", tipStyle is not null);
+
+        bool tipHasArrow = false;
+        bool tipHasBorder = false;
+        double tipCorner = 0;
+
+        if (tipStyle is not null)
+        {
+            var probe = new System.Windows.Controls.ToolTip { Content = "probe" };
+            probe.Measure(new Size(320, double.PositiveInfinity));
+            probe.Arrange(new Rect(0, 0, 320, probe.DesiredSize.Height));
+            probe.ApplyTemplate();
+
+            // 找模板里的 Border —— 系统默认模板的箭头就是 Path
+            var border = FindVisualChild<System.Windows.Controls.Border>(probe);
+            if (border is not null)
+            {
+                tipHasBorder = true;
+                tipCorner = border.CornerRadius.TopLeft;
+            }
+
+            tipHasArrow = FindVisualChild<System.Windows.Shapes.Path>(probe) is not null;
+        }
+
+        Check("ToolTip 模板含自定义 Border", tipHasBorder);
+        Check("ToolTip 圆角为 6", Math.Abs(tipCorner - 6) < 0.01, $"实际 {tipCorner}");
+        Check("ToolTip 模板已移除系统小箭头", !tipHasArrow);
+
+        // 恢复默认强调色
+        theme.SetAccentColor(Color.FromRgb(0x60, 0xCD, 0xFF));
+
         return _failures;
     }
 
@@ -321,6 +395,26 @@ public static class IntegrationTest
         string line = $"  {(ok ? "PASS" : "FAIL")}  {name}{(detail.Length > 0 ? "  -> " + detail : "")}";
         Console.WriteLine(line);
         _sink?.AppendLine(line);
+    }
+
+    /// <summary>
+    /// 在视觉树里递归查找第一个指定类型的元素。
+    /// </summary>
+    private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
+    {
+        if (parent is null) return null;
+
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typed) return typed;
+
+            var found = FindVisualChild<T>(child);
+            if (found is not null) return found;
+        }
+
+        return null;
     }
 
     private static StringBuilder? _sink;

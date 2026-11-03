@@ -66,15 +66,18 @@
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="20,20,12,24">
                     <!--
                         应用图标：矢量版 Zentwik 标志（闪电 Z）。
-                        数据来自 Assets/icons/Zentwik.svg，
-                        经 RDP 简化到 48 点 / 468 字符（详见 Themes/BrandLogo.xaml）。
+                        几何来自 SvgConverterTool 输出的
+                        Zentwik-fill_opacity_0.45.xaml（VTracer 对位图的
+                        像素级描摹，1024×1024 网格），详见 Themes/BrandLogo.xaml。
 
                         三层填充分别绑定品牌色的主色 / 中间调 / 高光，
                         因此图标会跟随强调色实时变化。
+                        画刷本身是透明背景（无底板），这里不需要圆角。
                     -->
-                    <Rectangle Width="32" Height="32"
-                               Fill="{DynamicResource BrandLogoBrush}"
-                               RadiusX="6" RadiusY="6" />
+                    <Image Source="{DynamicResource BrandLogoImage}"
+                           Width="26" Height="34"
+                           Stretch="Uniform"
+                           RenderOptions.EdgeMode="Unspecified" />
 
                     <!--
                         参考 HTML 的 letter-spacing: 0.5px 在 WPF 里没有对应属性：

@@ -149,7 +149,15 @@ public partial class App : Application
 
             window.Dispatcher.InvokeAsync(() =>
             {
-                ScreenshotHelper.Capture(window, outPath);
+                // --tooltip : 额外叠加一个 ToolTip 预览（Popup 拍不到，只能这样验）
+                if (e.Args.Contains("--tooltip"))
+                {
+                    ScreenshotHelper.CaptureWithTooltip(window, outPath);
+                }
+                else
+                {
+                    ScreenshotHelper.Capture(window, outPath);
+                }
                 Shutdown(0);
             });
         }

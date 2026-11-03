@@ -74,4 +74,12 @@
                       BlurRadius="16" ShadowDepth="2" Direction="270"
                       Color="Black" Opacity="0.45" RenderingBias="Quality" />
 
+    <!--
+      ToolTip 悬浮阴影 —— 比卡片轻得多。
+      ToolTip 是小浮层，阴影重了会显得脏；深色下 0.30 已足够拉开层次。
+    -->
+    <DropShadowEffect x:Key="ToolTipShadowEffect"
+                      BlurRadius="8" ShadowDepth="2" Direction="270"
+                      Color="Black" Opacity="0.30" RenderingBias="Quality" />
+
 </ResourceDictionary>

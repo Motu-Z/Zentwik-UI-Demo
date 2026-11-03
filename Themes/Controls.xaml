@@ -556,4 +556,69 @@
     <!-- 隐式样式：让全应用所有 ScrollBar 都用上面这根（否则单独每个页面设置容易漏） -->
     <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}" />
 
+    <!--
+        ==================== ToolTip（全局隐式样式）===================
+
+        【为什么要重写】
+        WPF 默认的 ToolTip 是 Aero 时代的产物：
+          · 米黄/白底 + 深灰描边 + 一个系统小箭头（Path 三角）
+          · 深色主题下这块浅色气泡极其刺眼
+          · 字号与字体不跟随应用
+        所以整块模板重写，做成与卡片同源的扁平浮层。
+
+        【关键点】
+        · 自定义 ControlTemplate 天然去掉了系统小箭头与默认边框；
+        · HasDropShadow=False 去掉 Popup 的系统阴影，改用 Effect 里的轻阴影；
+        · 隐式样式（无 x:Key）→ 全应用所有 ToolTip 自动生效；
+        · Opened 时 0.1 秒淡入，避免浮层「啪」地弹出来。
+
+        【命名说明】
+        规范里写的 BorderBrush 在本工程并不存在 —— 边框色 token 叫
+        BorderColorBrush（深色 #2D2D2D / 浅色 #E0E0E0），这里用的是它。
+    -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="{DynamicResource CardBgBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderColorBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,6" />
+
+        <!-- 系统阴影（带小箭头的那个黑边）关掉，改用轻阴影 -->
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Effect" Value="{DynamicResource ToolTipShadowEffect}" />
+
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter ContentSource="Content"
+                                          TextBlock.Foreground="{TemplateBinding Foreground}"
+                                          TextBlock.FontFamily="{TemplateBinding FontFamily}"
+                                          TextBlock.FontSize="{TemplateBinding FontSize}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+            <!-- 出现时 0.1 秒淡入 -->
+            <EventTrigger RoutedEvent="Opened">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="0" To="1" Duration="0:0:0.1" />
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
+    </Style>
+
 </ResourceDictionary>

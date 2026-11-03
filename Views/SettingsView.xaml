@@ -250,12 +250,18 @@
             <Border Style="{StaticResource CardStyle}"
                     Margin="0,0,0,24">
                 <StackPanel>
-                    <!-- 顶部一行 -->
+                    <!-- 顶部一行：图标 / Zentwik / 版本号胶囊 -->
                     <StackPanel Orientation="Horizontal">
-                        <!-- 新矢量图标 -->
-                        <Rectangle Width="40" Height="40"
-                                   Fill="{DynamicResource BrandLogoBrush}"
-                                   RadiusX="8" RadiusY="8" />
+                        <!--
+                            新矢量图标（闪电 Z）。
+                            透明背景、无底板 —— 所以不需要圆角。
+                            几何取自 Zentwik-fill_opacity_0.45.xaml，
+                            颜色由 AppThemeService 组装，跟随主题。
+                        -->
+                        <Image Source="{DynamicResource BrandLogoImage}"
+                               Width="36" Height="48"
+                               Stretch="Uniform"
+                               RenderOptions.EdgeMode="Unspecified" />
 
                         <TextBlock Text="Zentwik"
                                    Margin="12,0,0,0"
@@ -288,11 +294,12 @@
 
                     <!-- 底部两行注释 -->
                     <!--
+                        与上方标题行之间留一个空行（20px ≈ 一行行高）。
                         字体用 AppCommentFontFamily 而不是 AppMonoFontFamily：
                         后者全是无中文字形的西文字体，中文会被回退成宋体（衬线），
                         与等宽的「//」割裂。详见 Tokens.Dark.xaml 的说明。
                     -->
-                    <StackPanel Margin="0,16,0,0">
+                    <StackPanel Margin="0,20,0,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="//"
                                        Margin="0,0,8,0"

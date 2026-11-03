@@ -57,4 +57,9 @@
                       BlurRadius="14" ShadowDepth="1" Direction="270"
                       Color="Black" Opacity="0.10" RenderingBias="Quality" />
 
+    <!-- ToolTip 悬浮阴影（浅色下更轻，键集合与 Tokens.Dark.xaml 一致）。 -->
+    <DropShadowEffect x:Key="ToolTipShadowEffect"
+                      BlurRadius="8" ShadowDepth="2" Direction="270"
+                      Color="Black" Opacity="0.12" RenderingBias="Quality" />
+
 </ResourceDictionary>

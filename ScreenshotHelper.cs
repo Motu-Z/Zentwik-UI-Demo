@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -49,6 +50,91 @@ internal static class ScreenshotHelper
         if (window.Content is UIElement content)
         {
             bitmap.Render(content);
+        }
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+
+        string? dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        using var stream = File.Create(outputPath);
+        encoder.Save(stream);
+    }
+
+    /// <summary>
+    /// 离屏截图 + 叠加一个 ToolTip 预览。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么要单独做一个方法】
+    /// ToolTip 真实运行时挂在 Popup 里 —— Popup 是独立的顶层窗口，
+    /// 不在视觉树中，RenderTargetBitmap 根本拍不到它。
+    /// 所以这里手工实例化一个 ToolTip，Measure/Arrange 让它套用模板，
+    /// 再单独渲染并贴到截图的左下角，用来校验全局 ToolTip 样式的实际观感。
+    /// </remarks>
+    public static void CaptureWithTooltip(Window window, string outputPath)
+    {
+        window.UpdateLayout();
+
+        int width = (int)Math.Ceiling(window.ActualWidth);
+        int height = (int)Math.Ceiling(window.ActualHeight);
+
+        if (width <= 0 || height <= 0)
+        {
+            width = (int)window.Width;
+            height = (int)window.Height;
+        }
+
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+
+        var canvas = new DrawingVisual();
+        using (var dc = canvas.RenderOpen())
+        {
+            dc.DrawRectangle(window.Background ?? Brushes.Transparent, null,
+                            new Rect(0, 0, width, height));
+        }
+        bitmap.Render(canvas);
+
+        if (window.Content is UIElement content)
+        {
+            bitmap.Render(content);
+        }
+
+        // ---- ToolTip 预览 ----
+        // 给一个有限宽度：Measure(∞) 时 ToolTip 的 DesiredSize.Width 可能是 0，
+        // 文字会被压成一条竖条。
+        var tip = new ToolTip { Content = "在浏览器中打开项目仓库" };
+        tip.Measure(new Size(320, double.PositiveInfinity));
+        tip.Arrange(new Rect(0, 0, 320, tip.DesiredSize.Height));
+        tip.UpdateLayout();
+
+        int tipW = (int)Math.Ceiling(tip.ActualWidth);
+        int tipH = (int)Math.Ceiling(tip.ActualHeight);
+
+        if (tipW > 0 && tipH > 0)
+        {
+            var tipBitmap = new RenderTargetBitmap(tipW, tipH, 96, 96, PixelFormats.Pbgra32);
+            tipBitmap.Render(tip);
+
+            // 单独存一份，方便排查「到底渲染出来没有」
+            var tipEncoder = new PngBitmapEncoder();
+            tipEncoder.Frames.Add(BitmapFrame.Create(tipBitmap));
+            string tipPath = Path.ChangeExtension(outputPath, null) + ".tooltip.png";
+            using (var ts = File.Create(tipPath))
+            {
+                tipEncoder.Save(ts);
+            }
+
+            var tipVisual = new DrawingVisual();
+            using (var dc = tipVisual.RenderOpen())
+            {
+                dc.DrawImage(tipBitmap,
+                    new Rect(24, height - tipH - 24, tipW, tipH));
+            }
+            bitmap.Render(tipVisual);
         }
 
         var encoder = new PngBitmapEncoder();

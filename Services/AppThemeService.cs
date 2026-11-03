@@ -92,6 +92,62 @@ public sealed class AppThemeService
     public SolidColorBrush AccentSubtleBrush { get; private set; } =
         new(Color.FromRgb(0x60, 0xCD, 0xFF)) { Opacity = 0.22 };
 
+    /// <summary>
+    /// 应用图标（DrawingImage）—— 几何来自 Themes/BrandLogo.xaml，
+    /// 颜色在这里组装，因此随强调色与明暗实时变化。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么必须由代码构建】
+    /// ResourceDictionary 里的 DrawingImage 属于 Freezable，
+    /// 加载时会被 WPF 冻结；冻结会让内部的 DynamicResource 表达式
+    /// **当场求值固化**。
+    /// 实测：图标在深浅两套主题下颜色完全相同，且等于画刷的初始值 ——
+    /// 也就是图标从来没有跟随过强调色或明暗变化过。
+    ///
+    /// 改成在代码里组装 DrawingGroup（代码创建的对象不走 XAML 的冻结路径），
+    /// 换色时整体重建实例并替换字典项，DynamicResource 才会重新解析。
+    /// </remarks>
+    public DrawingImage BrandLogoImage { get; private set; } = new();
+
+    /// <summary>
+    /// 图标几何在 1024 网格里的合并包围盒（transform 已烘焙进坐标）。
+    /// </summary>
+    private static readonly Rect BrandLogoBounds = new(166, 35, 705, 943);
+
+    /// <summary>
+    /// 取某一层该用的品牌色画刷。
+    /// </summary>
+    /// <remarks>
+    /// 对应原 SVG 的三层灰阶：第 1 层主体 = 主色，
+    /// 第 3/5 层 = 高光，其余 = 中间调。
+    /// </remarks>
+    private Brush BrandBrushForLayer(int layer) => layer switch
+    {
+        1 => BrandAccentBrush,
+        3 or 5 => BrandAccentLightBrush,
+        _ => BrandAccentMidBrush,
+    };
+
+    /// <summary>
+    /// 用当前品牌色重建应用图标。
+    /// </summary>
+    private void RebuildBrandLogo()
+    {
+        var resources = Application.Current.Resources;
+        var group = new DrawingGroup();
+
+        for (int i = 1; i <= 6; i++)
+        {
+            if (resources["BrandLogoPath" + i] is not PathGeometry geo) continue;
+            group.Children.Add(new GeometryDrawing(BrandBrushForLayer(i), null, geo));
+        }
+
+        // DrawingGroup 本身就是 Drawing，包围盒由内容自动计算
+        // （正好等于六层合并后的 166,35 - 871,978）。
+        BrandLogoImage = new DrawingImage(group);
+        _accentDictionary["BrandLogoImage"] = BrandLogoImage;
+    }
+
     private AppThemeService() { }
 
     /// <summary>当前主题模式（用户选择：浅色 / 深色 / 系统）。</summary>
@@ -170,14 +226,21 @@ public sealed class AppThemeService
         _accentDictionary["BrandAccentLightBrush"] = BrandAccentLightBrush;
         resources.MergedDictionaries.Add(_accentDictionary);
 
-        // 图标矢量资源（品牌色的三层画刷在 _accentDictionary 里，
-        // 这里只提供几何与画刷结构）
+        // 图标几何资源（Themes/BrandLogo.xaml 只提供 PathGeometry，
+        // 颜色由 AppThemeService 组装成 DrawingImage）
         resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("Themes/BrandLogo.xaml", UriKind.Relative)
         });
 
         IsDark = true;
+
+        // 品牌色必须在这里算一次。
+        // 【为什么】SetThemeMode 里如果「模式没变」会直接 return，
+        // 而 Mode 初值就是 Dark —— 于是「--theme=dark」这条路径上
+        // RefreshBrandAccent 永远不会被调用，品牌色停留在构造函数的初始值
+        // （浅蓝），图标与侧栏的 twik 文字都不是真正派生自强调色的颜色。
+        RefreshBrandAccent();
     }
 
     /// <summary>
@@ -359,6 +422,9 @@ public sealed class AppThemeService
 
         BrandAccentLightBrush = new SolidColorBrush(light);
         _accentDictionary["BrandAccentLightBrush"] = BrandAccentLightBrush;
+
+        // 图标是按品牌色组装的 → 品牌色变了，图标必须一起重建
+        RebuildBrandLogo();
     }
 
     /// <summary>
