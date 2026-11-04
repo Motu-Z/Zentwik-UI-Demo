@@ -1,22 +1,28 @@
+using System.Windows.Controls;
+
 namespace ZentwikThemeDemo.Views;
 
 /// <summary>
-/// 调校页（占位）。
+/// 调校页。
 ///
 /// <remarks>
-/// 骨架复用 <see cref="PlaceholderView"/>：标题 + 一张空卡片 + [功能开发中]。
-/// 颜色全部来自主题资源的 DynamicResource，切深/浅色时自动跟随，
-/// 不会出现孤儿控件。
+/// 【为什么不再是占位页的派生类】
+/// 占位页的骨架是「标题 + 一张空卡片」，调校页要的是完整的三卡版式，
+/// 两者结构不同。而 WPF 不允许「用 XAML 定义的 UserControl」再被派生类当作
+/// XAML 根（编译期报 MC6017）—— 所以调校页改为直接继承 UserControl，
+/// 骨架整个写在自己的 XAML 里。其余四个占位页继续走 PlaceholderView。
 ///
-/// 【为什么是纯 C# 类而不是带 XAML 的 UserControl】
-/// WPF 不允许把「用 XAML 定义的 UserControl」当作派生类的 XAML 根
-/// （编译期报 MC6017）。骨架留在基类的 XAML 里，
-/// 派生类只负责设标题，视觉部分不会分叉。
+/// 【页面只做呈现，不做判断】
+/// 电源策略的值域、语义、可用性判定全在
+/// <see cref="ZentwikThemeDemo.ViewModels.TuningViewModel"/> 里，
+/// XAML 只是把 int 画成分段控件、把 0–100 画成滑块。
+/// 这样「界面能取到的值」与「契约允许的值」天然一致 ——
+/// 不需要在 XAML 里再写一遍范围校验。
 /// </remarks>
-public class TuningView : PlaceholderView
+public partial class TuningView : UserControl
 {
     public TuningView()
     {
-        Title = "调校";
+        InitializeComponent();
     }
 }

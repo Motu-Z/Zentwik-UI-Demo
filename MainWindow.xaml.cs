@@ -146,6 +146,54 @@ public partial class MainWindow : Window
         _ => new PlaceholderView { Title = tag },
     };
 
+    /// <summary>
+    /// 把当前页面的滚动区滚到底。
+    /// </summary>
+    /// <remarks>
+    /// 供离屏截图使用：页面比窗口高时，一张图拍不全，
+    /// 滚到底再拍一张才能覆盖折叠线以下的内容。
+    /// 窗口本身无法超过屏幕工作区高度，所以「把窗口拉高」这条路走不通。
+    /// </remarks>
+    public void ScrollPageToEnd()
+    {
+        if (ContentHost.Content is not DependencyObject root)
+        {
+            return;
+        }
+
+        FindFirst<ScrollViewer>(root)?.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// 在可视树里找出第一个指定类型的元素。
+    /// </summary>
+    private static T? FindFirst<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root is null)
+        {
+            return null;
+        }
+
+        if (root is T match)
+        {
+            return match;
+        }
+
+        int count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (int i = 0; i < count; i++)
+        {
+            T? found = FindFirst<T>(VisualTreeHelper.GetChild(root, i));
+
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
     // ==================== 窗口控制（Code-Behind） ====================
 
     private void OnDragAreaMouseDown(object sender, MouseButtonEventArgs e)

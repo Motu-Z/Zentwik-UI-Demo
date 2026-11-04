@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Linq;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using ZentwikThemeDemo.Services;
 
@@ -143,6 +144,23 @@ public partial class App : Application
                 window.NavigateTo(pageArg["--page=".Length..]);
             }
 
+            // 可选：--size=1180x1400 指定离屏渲染尺寸。
+            // 页面比窗口高时（例如调校页的三卡版式），
+            // 只按窗口尺寸拍会拍不到折叠线以下的内容。
+            string? sizeArg = e.Args.FirstOrDefault(a => a.StartsWith("--size="));
+            if (sizeArg is not null)
+            {
+                string[] parts = sizeArg["--size=".Length..].Split('x', 'X');
+
+                if (parts.Length == 2 &&
+                    double.TryParse(parts[0], out double shotWidth) &&
+                    double.TryParse(parts[1], out double shotHeight))
+                {
+                    window.Width = shotWidth;
+                    window.Height = shotHeight;
+                }
+            }
+
             // 可选：--accent=system|custom 指定色彩模式
             string? accentArg = e.Args.FirstOrDefault(a => a.StartsWith("--accent="));
             if (accentArg is not null)
@@ -153,8 +171,20 @@ public partial class App : Application
                         : AccentSource.Custom);
             }
 
+            // 可选：--scroll=bottom 把页面滚到底后再拍（拍折叠线以下的内容）
+            bool scrollToBottom = e.Args.Contains("--scroll=bottom");
+
             window.Dispatcher.InvokeAsync(() =>
             {
+                if (scrollToBottom)
+                {
+                    // 必须先跑一次布局：ScrollViewer 的 Extent（内容总高）
+                    // 要等布局算完才有值，否则 ScrollToEnd 是个空操作。
+                    window.UpdateLayout();
+                    window.ScrollPageToEnd();
+                    window.UpdateLayout();
+                }
+
                 // --tooltip : 额外叠加一个 ToolTip 预览（Popup 拍不到，只能这样验）
                 if (e.Args.Contains("--tooltip"))
                 {
