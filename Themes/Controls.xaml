@@ -841,8 +841,7 @@
     </Style>
 
     <!-- ==================== 圆形图标按钮 ==================== -->
-    <Style x:Key="IconButtonStyle" TargetType="Button">
-        <Setter Property="Width" Value="36" />
+    <Style x:Key="IconButtonStyle" TargetType="Button">        <Setter Property="Width" Value="36" />
         <Setter Property="Height" Value="36" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
@@ -1055,30 +1054,281 @@
 
     <!--
         ============================================================
-        下拉框（ComboBox）—— 本轮暂不提供
+        下拉框（ComboBox）
         ============================================================
 
-        【为什么撤掉而不是留着】
-        自绘 ComboBox 弹层的模板已经写完并通过了编译，
-        但**无法在当前环境完成交互式验证**：
-        打开弹层（IsDropDownOpen = true）会让进程卡住，
-        且系统默认模板同样卡 —— 说明卡住的是「启动期程序化开 Popup」
-        这件事本身，不是模板写错了。
+        【用户已确认：真实点击不卡】
+        上一轮撤下它，是因为「启动期程序化开弹层」会挂起进程，
+        而本机无法做交互式验证（Add-Type 被安全策略拦、
+        UIA 的 ExpandCollapsePattern 落在同一条 IsDropDownOpen 路径）。
+        用户手工点击确认弹层行为正常 —— 挂起的是那条诊断路径本身，
+        不是控件。所以本轮恢复。
 
-        在拿到真实点击验证之前，把一个「点开可能卡住」的控件放进共享样式表，
-        等于给后来人埋雷，所以本轮撤下。
+        【模板必须照规范写，否则会转死循环】
+        弹层宿主必须是 <StackPanel IsItemsHost="True" />：
+        ComboBox 靠它把选项挂进去。写成裸的 <ItemsPresenter /> 时，
+        ComboBox 找不到宿主面板，会在「加选项 → 重新布局」之间反复，
+        表现为窗口还在但界面卡住、渲染线程空转。
 
-        【要重新做下拉框时，先看这两条】
-          1. 弹层宿主必须是 <StackPanel IsItemsHost="True" />，
-             不能写成裸的 <ItemsPresenter />；
-          2. 触发器必须命名为 ToggleButton（WPF 按这个名字找它），
-             且 IsChecked 双向绑回 IsDropDownOpen。
+        【触发器必须命名为 ToggleButton】
+        WPF 按这个名字在模板里找开合按钮，且它的 IsChecked 要双向绑回
+        IsDropDownOpen —— 选中项后弹层才会自动收起。
 
-        【页面上暂时用什么】
-        调校页的方案选择改用分段控件（SegmentRadioButtonStyle）——
-        没有弹层，行为完全可预期，交互路径短。
-
-        详情见 docs/ 下拉框验证记录.md。
+        【ContentPresenter 不能设 HorizontalAlignment=Left/Center】
+        设了会让子 TextBlock 按 DesiredSize 排版，
+        而中文 fallback 链下墨迹宽度略大于 advance 总和 ——
+        末字右缘会被裁掉（「日常办公」少半个「公」）。
+        保持默认 Stretch，文字在内部左对齐，既不裁切也不换行。
     -->
+    <Style x:Key="ComboBoxFieldStyle" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid x:Name="Root">
+
+                        <ToggleButton x:Name="ToggleButton"
+                                      Grid.ColumnSpan="2"
+                                      Focusable="False"
+                                      ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd"
+                                            Background="{DynamicResource ControlBgBrush}"
+                                            BorderBrush="{DynamicResource ControlBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            SnapsToDevicePixels="True">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <ContentPresenter x:Name="ContentSite"
+                                                              Grid.Column="0"
+                                                              Margin="10,7,4,7"
+                                                              VerticalAlignment="Center"
+                                                              Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              ContentStringFormat="{Binding SelectionBoxItemStringFormat, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              IsHitTestVisible="False"
+                                                              TextElement.Foreground="{DynamicResource TextPrimaryBrush}"
+                                                              TextElement.FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType=ComboBox}}" />
+
+                                            <Path x:Name="Arrow"
+                                                  Grid.Column="1"
+                                                  Width="10" Height="6"
+                                                  Margin="6,0,12,0"
+                                                  HorizontalAlignment="Right"
+                                                  Data="M0,0 L5,5 L10,0"
+                                                  Stroke="{DynamicResource TextMetaBrush}"
+                                                  StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"
+                                                  IsHitTestVisible="False" />
+                                        </Grid>
+                                    </Border>
+
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="180" CenterX="5" CenterY="3" />
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="False"
+                               Placement="Bottom"
+                               VerticalOffset="4"
+                               IsOpen="{TemplateBinding IsDropDownOpen}"
+                               Focusable="False">
+                            <Border MinWidth="{TemplateBinding ActualWidth}"
+                                    Padding="4"
+                                    Background="{DynamicResource CardBgBrush}"
+                                    BorderBrush="{DynamicResource BorderColorBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8">
+                                <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
+                                    <!-- IsItemsHost 是必须的：ComboBox 靠它把选项挂进来 -->
+                                    <StackPanel IsItemsHost="True" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="Padding" Value="10,7" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="Focusable" Value="True" />
+                    <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ComboBoxItem">
+                                <Border x:Name="Bd"
+                                        Background="Transparent"
+                                        CornerRadius="5"
+                                        Padding="{TemplateBinding Padding}"
+                                        SnapsToDevicePixels="True">
+                                    <ContentPresenter VerticalAlignment="Center"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}"
+                                                      TextElement.FontSize="{TemplateBinding FontSize}" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemSelectedBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==================== 危险操作按钮 ==================== -->
+    <!--
+        红色描边 + 红字，用于「删除」这类不可逆操作。
+        悬停时填一层淡红底，让危险性在悬停时更明确。
+    -->
+    <Style x:Key="DangerButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusRing}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"
+                                          TextElement.FontSize="{TemplateBinding FontSize}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.75" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.55" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==================== 小号图标按钮 ==================== -->
+    <!--
+        表格行内的操作按钮（重命名 / 删除）。
+        与 IconButtonStyle 的差别：尺寸小一档（28）、无边框、
+        悬停时才显出淡底 —— 表格里一排实心方框会太吵。
+    -->
+    <Style x:Key="TinyIconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMetaBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="6"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource ItemHoverBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.7" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==================== 表格 ==================== -->
+    <!--
+        表头：次级文字色 + 小字号 + 中等字重。
+        不用 DataGrid —— DataGrid 的默认行模板在深色下要覆盖的东西太多，
+        反而不如自己用 Grid 拼表格可控。这里只提供三个可复用的文本样式。
+    -->
+    <Style x:Key="TableHeaderTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMetaBrush}" />
+    </Style>
+
+    <Style x:Key="TableCellTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style x:Key="TableCellMetaTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMetaBrush}" />
+    </Style>
 
 </ResourceDictionary>

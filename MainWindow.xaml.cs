@@ -140,6 +140,7 @@ public partial class MainWindow : Window
         "Misc"     => new SettingsView(),
         "Tuning"   => new TuningView(),
         "Process"  => new ProcessView(),
+        "Power"    => new PowerView(),
         "Config"   => new ConfigView(),
         "Behavior" => new BehaviorView(),
         "Logs"     => new LogsView(),

@@ -7,33 +7,16 @@ namespace ZentwikThemeDemo.ViewModels;
 /// 调校页视图模型。
 ///
 /// <remarks>
-/// 【电源策略是本页最容易写错的地方】
-/// 这一块的字段名、值域、语义全部对齐 Zentwik.Core 的契约
-/// （<c>PowerPolicySnapshot</c> / <c>PowerPolicyService</c>），
-/// 逐项对应关系如下：
+/// 【本页只管 SMU 硬件调校】
+/// 电源策略已迁到第三页「电源」—— 它走 Windows 电源计划接口，
+/// 与 SMU 是两条不同的通路，混在一页会让两个「应用」按钮语义打架。
+/// 电源策略的字段与语义见 <see cref="PowerViewModel"/>。
 ///
-/// | 本页属性 | 系统设置项 | 值域 | 含义 |
-/// |---|---|---|---|
-/// | <see cref="Epp"/> | Processor energy performance preference policy | 0–100 | 0 = 性能优先，100 = 能效优先 |
-/// | <see cref="BoostMode"/> | Processor performance boost mode | 0–4 | 0 关闭 / 1 开启 / 2 激进 / 3 高效开启 / 4 高效激进 |
-/// | <see cref="MaxProcessorState"/> | Maximum processor state | 50–100 | 最大处理器状态百分比 |
-/// | <see cref="Aspm"/> | Link State Power Management | 0–2 | 0 关闭 / 1 中等节能 / 2 最大节能 |
-/// | <see cref="IdleDisable"/> | Processor idle disable | 布尔 | **true = 禁用空闲** |
-///
-/// 【为什么每一项都带 Supported / Error】
-/// 这五项不是每台机器都有（台式机常常没有 ASPM，部分主板 BIOS 不暴露 Boost 档位）。
-/// 只回一个值的话，「读到 0」与「读不到」在界面上长得一模一样 ——
-/// 用户会看到一个 EPP = 0 的滑块，拖一下才发现根本写不进去。
-/// 所以每项自带 Supported：界面据此决定画控件还是画「本机不支持」，
-/// Error 则是这一项读不到的原因（含 Win32 错误码）。
-///
-/// 【为什么 IdleDisable 不翻成「启用 C-State」】
-/// 系统里这一项的名字是 Processor idle disable，值 1 表示**禁用**空闲。
-/// 接口照抄系统语义（idleDisable = true 就是禁用），而不是翻成正向的「已启用」——
-/// 一旦翻转，调用方每次读这段代码都要在脑子里做一次取反，
-/// 而取反错一次就是「想让 CPU 降频却把它锁在了最高频」。
-/// 界面标签因此直接写「空闲禁用」，让语义与取值同向。
-/// </remarks>
+/// 【配置方案不在本页】
+/// 方案列表 / 切换 / 重命名 / 删除统一由
+/// <see cref="ProfileSession"/>（跨页共享单例）承担，
+/// 页面只放一个 ProfileBar 入口，模态大窗在 ProfileOverlay 里。
+/// </remarks>/// </remarks>
 public class TuningViewModel : ViewModelBase
 {
     // ==================== 硬件概览 ====================
@@ -64,65 +47,6 @@ public class TuningViewModel : ViewModelBase
     {
         get => _smuAvailable;
         set => SetProperty(ref _smuAvailable, value);
-    }
-
-    // ==================== 方案 ====================
-
-    /// <summary>
-    /// 可选方案名。选中项即「当前正在编辑哪一份方案」。
-    /// </summary>
-    /// <remarks>
-    /// 【为什么是 ProfileOptionItem 而不是 string】
-    /// 分段控件的每一项都要能表达「自己是不是当前选中项」，
-    /// 绑一个字符串做不到 —— 选中态得由列表项自己持有。
-    /// 用一个只带两件事的小类型（名字 + 选中态）就够了。
-    /// </remarks>
-    public ObservableCollection<ProfileOptionItem> ProfileOptions { get; } = new();
-
-    private int _profileIndex;
-
-    /// <summary>
-    /// 当前选中的方案下标。
-    /// </summary>
-    /// <remarks>
-    /// 【切换方案不算「有未保存的改动」】
-    /// 方案选择器表达的是「我正在编辑哪一份」，不是「我改了什么」。
-    /// 真正把页面标脏的是数值控件（CO / FMax / 电源策略）的输入路径。
-    /// </remarks>
-    public int ProfileIndex
-    {
-        get => _profileIndex;
-        set
-        {
-            if (!SetProperty(ref _profileIndex, value))
-            {
-                return;
-            }
-
-            SyncProfileSelection();
-            OnPropertyChanged(nameof(ProfileName));
-        }
-    }
-
-    /// <summary>当前方案名（供只读展示）。</summary>
-    public string ProfileName =>
-        _profileIndex >= 0 && _profileIndex < ProfileOptions.Count
-            ? ProfileOptions[_profileIndex].Name
-            : "自定义方案";
-
-    /// <summary>
-    /// 把选中态同步到各个列表项。
-    /// </summary>
-    /// <remarks>
-    /// 只在「被选中的那一个」置 true 时才会回调 VM（见
-    /// <see cref="ProfileOptionItem.IsSelected"/>），所以这里不会形成回环。
-    /// </remarks>
-    private void SyncProfileSelection()
-    {
-        for (int i = 0; i < ProfileOptions.Count; i++)
-        {
-            ProfileOptions[i].IsSelected = i == _profileIndex;
-        }
     }
 
     // ==================== 逐核 CO ====================
@@ -187,186 +111,6 @@ public class TuningViewModel : ViewModelBase
     /// <summary>FMax 步进（MHz）。</summary>
     public int FMaxStepMHz => 10;
 
-    // ==================== Windows 电源策略 ====================
-    // 字段与 Zentwik.Core.PowerPolicySnapshot 一一对应，语义见类注释。
-
-    private int _epp = 50;
-
-    /// <summary>能效偏好（EPP），0–100。0 = 性能优先，100 = 能效优先。</summary>
-    public int Epp
-    {
-        get => _epp;
-        set
-        {
-            if (SetProperty(ref _epp, value))
-            {
-                MarkDirty();
-            }
-        }
-    }
-
-    private bool _eppSupported = true;
-
-    /// <summary>EPP 这一项本机是否可读。</summary>
-    public bool EppSupported
-    {
-        get => _eppSupported;
-        set => SetProperty(ref _eppSupported, value);
-    }
-
-    private string _eppError = string.Empty;
-
-    /// <summary>EPP 不可读的原因。</summary>
-    public string EppError
-    {
-        get => _eppError;
-        set => SetProperty(ref _eppError, value);
-    }
-
-    private int _boostMode = 1;
-
-    /// <summary>升频模式（Boost），0–4。</summary>
-    public int BoostMode
-    {
-        get => _boostMode;
-        set
-        {
-            if (SetProperty(ref _boostMode, value))
-            {
-                MarkDirty();
-            }
-        }
-    }
-
-    private bool _boostModeSupported = true;
-
-    /// <summary>Boost 这一项本机是否可读。</summary>
-    public bool BoostModeSupported
-    {
-        get => _boostModeSupported;
-        set => SetProperty(ref _boostModeSupported, value);
-    }
-
-    private string _boostModeError = string.Empty;
-
-    /// <summary>Boost 不可读的原因。</summary>
-    public string BoostModeError
-    {
-        get => _boostModeError;
-        set => SetProperty(ref _boostModeError, value);
-    }
-
-    private int _maxProcessorState = 100;
-
-    /// <summary>最大处理器状态，50–100（百分比）。</summary>
-    public int MaxProcessorState
-    {
-        get => _maxProcessorState;
-        set
-        {
-            if (SetProperty(ref _maxProcessorState, value))
-            {
-                MarkDirty();
-            }
-        }
-    }
-
-    private bool _maxProcessorStateSupported = true;
-
-    /// <summary>最大处理器状态这一项本机是否可读。</summary>
-    public bool MaxProcessorStateSupported
-    {
-        get => _maxProcessorStateSupported;
-        set => SetProperty(ref _maxProcessorStateSupported, value);
-    }
-
-    private string _maxProcessorStateError = string.Empty;
-
-    /// <summary>最大处理器状态不可读的原因。</summary>
-    public string MaxProcessorStateError
-    {
-        get => _maxProcessorStateError;
-        set => SetProperty(ref _maxProcessorStateError, value);
-    }
-
-    private int _aspm = 1;
-
-    /// <summary>ASPM（PCIe 链路电源管理），0–2。</summary>
-    public int Aspm
-    {
-        get => _aspm;
-        set
-        {
-            if (SetProperty(ref _aspm, value))
-            {
-                MarkDirty();
-            }
-        }
-    }
-
-    private bool _aspmSupported = true;
-
-    /// <summary>ASPM 这一项本机是否可读。</summary>
-    public bool AspmSupported
-    {
-        get => _aspmSupported;
-        set => SetProperty(ref _aspmSupported, value);
-    }
-
-    private string _aspmError = string.Empty;
-
-    /// <summary>ASPM 不可读的原因。</summary>
-    public string AspmError
-    {
-        get => _aspmError;
-        set => SetProperty(ref _aspmError, value);
-    }
-
-    private bool _idleDisable;
-
-    /// <summary>
-    /// 空闲禁用（C-State 总开关）。<b>true 表示禁用空闲</b>，与系统设置项
-    /// Processor idle disable 的取值同向（写 1 = 禁用，写 0 = 允许）。
-    /// </summary>
-    public bool IdleDisable
-    {
-        get => _idleDisable;
-        set
-        {
-            if (SetProperty(ref _idleDisable, value))
-            {
-                MarkDirty();
-            }
-        }
-    }
-
-    private bool _idleDisableSupported = true;
-
-    /// <summary>C-State 这一项本机是否可读。</summary>
-    public bool IdleDisableSupported
-    {
-        get => _idleDisableSupported;
-        set => SetProperty(ref _idleDisableSupported, value);
-    }
-
-    private string _idleDisableError = string.Empty;
-
-    /// <summary>C-State 不可读的原因。</summary>
-    public string IdleDisableError
-    {
-        get => _idleDisableError;
-        set => SetProperty(ref _idleDisableError, value);
-    }
-
-    private string _activeSchemeName = "平衡";
-
-    /// <summary>当前活动的 Windows 电源方案名。</summary>
-    public string ActiveSchemeName
-    {
-        get => _activeSchemeName;
-        set => SetProperty(ref _activeSchemeName, value);
-    }
-
     // ==================== 状态 ====================
 
     private bool _isDirty;
@@ -418,11 +162,6 @@ public class TuningViewModel : ViewModelBase
 
     // ==================== 基线（供「放弃」回滚）====================
 
-    private readonly int _baselineEpp;
-    private readonly int _baselineBoostMode;
-    private readonly int _baselineMaxProcessorState;
-    private readonly int _baselineAspm;
-    private readonly bool _baselineIdleDisable;
     private readonly int _baselineFMax;
     private readonly int[] _baselineCoreMargins;
 
@@ -438,16 +177,6 @@ public class TuningViewModel : ViewModelBase
 
     public TuningViewModel()
     {
-        // 方案列表：每一项自己持有选中态，勾选后回调 VM。
-        string[] profiles = { "日常办公", "极限游戏" };
-
-        for (int i = 0; i < profiles.Length; i++)
-        {
-            var option = new ProfileOptionItem(profiles[i], i);
-            option.SelectedChanged += _ => ProfileIndex = option.Index;
-            ProfileOptions.Add(option);
-        }
-
         // 逐核 CO：预置一份看起来像真实调校档的值
         // （不是全 0 —— 全 0 看不出等宽数字在窄框里会不会挤）。
         int[] seed = { -18, -22, -17, -25, -26, -24, -29, -33, -13, -20, -13, -20, -11, -17, -14, -17 };
@@ -468,15 +197,8 @@ public class TuningViewModel : ViewModelBase
             };
         }
 
-        _baselineEpp = _epp;
-        _baselineBoostMode = _boostMode;
-        _baselineMaxProcessorState = _maxProcessorState;
-        _baselineAspm = _aspm;
-        _baselineIdleDisable = _idleDisable;
         _baselineFMax = _fMaxMHz;
         _baselineCoreMargins = CoreMargins.Select(c => c.Margin).ToArray();
-
-        SyncProfileSelection();
 
         RefreshCommand = new RelayCommand(_ =>
         {
@@ -492,7 +214,7 @@ public class TuningViewModel : ViewModelBase
 
         SaveCommand = new RelayCommand(_ =>
         {
-            StatusMessage = $"当前修改已保存到「{ProfileName}」";
+            StatusMessage = $"当前修改已保存到「{ProfileSession.Instance.CurrentName}」";
             IsDirty = false;
         });
 
@@ -531,11 +253,6 @@ public class TuningViewModel : ViewModelBase
 
         try
         {
-            Epp = _baselineEpp;
-            BoostMode = _baselineBoostMode;
-            MaxProcessorState = _baselineMaxProcessorState;
-            Aspm = _baselineAspm;
-            IdleDisable = _baselineIdleDisable;
             FMaxMHz = _baselineFMax;
 
             for (int i = 0; i < CoreMargins.Count && i < _baselineCoreMargins.Length; i++)
@@ -549,48 +266,6 @@ public class TuningViewModel : ViewModelBase
         {
             _suppressDirty = false;
         }
-    }
-}
-
-/// <summary>
-/// 一个可选方案。
-/// </summary>
-/// <remarks>
-/// 【为什么只在「变为选中」时才回调】
-/// 同一组单选按钮里，点中新项会自动取消旧项。
-/// 若取消也回调，VM 就会把 ProfileIndex 改回旧项 —— 于是点不中第二项。
-/// 只在变为选中时回调，方向才是单向的。
-/// </remarks>
-public class ProfileOptionItem : ViewModelBase
-{
-    private bool _isSelected;
-
-    /// <summary>方案名。</summary>
-    public string Name { get; }
-
-    /// <summary>在列表中的下标。</summary>
-    public int Index { get; }
-
-    /// <summary>是否为当前选中的方案。</summary>
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set
-        {
-            if (SetProperty(ref _isSelected, value) && value)
-            {
-                SelectedChanged?.Invoke(this);
-            }
-        }
-    }
-
-    /// <summary>本项被选中的通知。</summary>
-    public event Action<ProfileOptionItem>? SelectedChanged;
-
-    public ProfileOptionItem(string name, int index)
-    {
-        Name = name;
-        Index = index;
     }
 }
 

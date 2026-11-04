@@ -46,6 +46,50 @@ public sealed class InverseBooleanToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// 集合数量 → Visibility。数量为 0 时为 Visible（用于「空结果」提示），否则 Collapsed。
+/// </summary>
+/// <remarks>
+/// 与 <see cref="BooleanToVisibilityConverter"/> 方向相反，
+/// 单独写一个而不是加参数 —— 加了参数就要在每个用法处传参，
+/// 很容易传反，而「传反了空提示永远不显示」是极难自查的 bug。
+/// </remarks>
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        int count = value is int i ? i : 0;
+        return count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return Binding.DoNothing;
+    }
+}
+
+/// <summary>
+/// 字符串 → Visibility。空串 / null 时为 Collapsed，非空时为 Visible。
+/// </summary>
+/// <remarks>
+/// 用于「描述留空就不画占位」的场景 ——
+/// Core 的方案模型里 Note 是「留空即不显示」，不是「显示一行空白」。
+/// 界面若一律画出描述行，列表就会出现一排空的灰字。
+/// </remarks>
+public sealed class StringEmptyToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        bool empty = value is not string s || s.Length == 0;
+        return empty ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return Binding.DoNothing;
+    }
+}
+
+/// <summary>
 /// int → bool（按值相等），用于「分段控件绑定枚举值」。
 /// </summary>
 /// <remarks>

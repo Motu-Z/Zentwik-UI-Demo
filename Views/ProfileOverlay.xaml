@@ -1,0 +1,358 @@
+<UserControl x:Class="ZentwikThemeDemo.Views.ProfileOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ZentwikThemeDemo.ViewModels"
+             xmlns:conv="clr-namespace:ZentwikThemeDemo.Converters"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <!--
+      配置方案模态大窗（覆盖在页面之上）。
+
+      【为什么不用 Popup】
+      Popup 是独立顶层窗口，不在主视觉树里：
+        · 离屏截图拍不到它（工程里已有这个限制）；
+        · 程序化打开弹层会挂起进程（系统默认模板同样挂，与自定义模板无关）。
+      模态大窗本来就要盖住整页，用 Grid 叠层实现最直接 ——
+      盖在内容区之上，点不到下面的页面，语义上就是模态。
+
+      【为什么 DataContext 挂在 UserControl 上而不是页面】
+      方案状态是跨页共享的单例（ProfileSession.Instance）。
+      挂在 UserControl 自身上，页面换掉时大窗状态不受影响。
+
+      【版式来源】
+      参考用户提供的「选择配置方案」弹窗截图：
+        标题 + 副标题 → 方案列表（每行：头像圆点 + 名称 + 描述 + 右侧操作）
+        → 底部：取消 / 确定
+      每行右侧的操作区按截图做成：生效中显示「使用中」标记，
+      未生效显示「切换」按钮；重命名与删除是悬停才显形的图标按钮。
+    -->
+
+    <!--
+        DataContext 在代码里注入（ProfileSession.Instance 单例），
+        不用 XAML 的 <vm:ProfileSession /> ——
+        那样会 new 出第二个实例，与页面上共享的那份脱节。
+    -->
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:StringEmptyToVisibilityConverter x:Key="StringEmptyToVis" />
+    </UserControl.Resources>
+
+    <!--
+        Visibility 绑 IsOverlayOpen —— 打开时整层可见，关闭时 Collapsed。
+        整层用 Grid 铺满，遮罩与卡片都在其中居中。
+    -->
+    <Grid Visibility="{Binding IsOverlayOpen, Converter={StaticResource BoolToVis}}">
+
+        <!-- 遮罩：把下面的页面压暗，视觉上表达「模态」 -->
+        <Border Background="{DynamicResource OverlayScrimBrush}" />
+
+        <!-- 卡片 -->
+        <Border Width="560"
+                MaxHeight="620"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource CardBgBrush}"
+                BorderBrush="{DynamicResource BorderColorBrush}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Effect="{DynamicResource CardShadowEffect}">
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- ==================== 头部 ==================== -->
+                <TextBlock Grid.Row="0"
+                           Margin="24,22,24,0"
+                           Text="选择配置方案"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                <!-- ==================== 方案列表 ==================== -->
+                <ScrollViewer Grid.Row="1"
+                              Margin="16,18,16,0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Profiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="Row"
+                                        Margin="0,0,0,8"
+                                        Padding="14,12"
+                                        Background="{DynamicResource CardInnerBgBrush}"
+                                        BorderBrush="{DynamicResource BorderColorBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8">
+
+                                    <!--
+                                        行内容放在 Grid 里，点击整行 = 预备选中。
+
+                                        【为什么用 Grid 而不是把内容塞进 Button】
+                                        整行要能点，但行内又有「切换 / 重命名 / 删除」几个按钮 ——
+                                        把整行做成 Button 会让嵌套按钮无法正常接收点击。
+                                        这里让内容层浮在上面（接收它自己的点击），
+                                        底下的透明 Button 只负责「点到空白处时选中这一行」。
+
+                                        【为什么点击区用透明 Button 而不是 Border 事件】
+                                        Button 自带命中测试与手型光标，
+                                        不用自己写 IsMouseOver 触发器去改背景。
+                                    -->
+                                    <Grid>
+
+                                        <!-- 背景层：整行点击区 -->
+                                        <Button Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="0"
+                                                Cursor="Hand"
+                                                Focusable="False"
+                                                Command="{Binding DataContext.SelectProfileCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <ContentPresenter />
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!--
+                                            内容层：盖在背景层之上。
+
+                                            【命中测试为什么大部分要关掉】
+                                            背景按钮承担「点击整行选中」。
+                                            若内容层正常参与命中测试，
+                                            点的就是内容层里的 TextBlock ——
+                                            背景按钮根本收不到点击，整行就选不中了。
+                                            所以这里把内容层整体关掉命中测试，
+                                            只给真正需要交互的区域（右侧按钮区、
+                                            行内编辑区）单独打开。
+                                        -->
+                                        <Grid IsHitTestVisible="False">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- 头像圆点：取方案名首字 -->
+                                            <Border Grid.Column="0"
+                                                    Width="34" Height="34"
+                                                    VerticalAlignment="Center"
+                                                    Background="{DynamicResource AccentSubtleBrush}"
+                                                    CornerRadius="17">
+                                                <TextBlock Text="{Binding NameInitial}"
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+
+                                        <!-- 名称 + 描述 / 行内重命名 / 删除确认 -->
+                                        <StackPanel Grid.Column="1"
+                                                    Margin="12,0,12,0"
+                                                    VerticalAlignment="Center">
+
+                                            <!-- 普通态：名称 + 描述 -->
+                                            <StackPanel Visibility="{Binding IsRenaming, Converter={StaticResource InverseBoolToVis}}">
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="14"
+                                                           FontWeight="Medium"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <TextBlock Text="{Binding Note}"
+                                                           FontSize="11.5"
+                                                           Foreground="{DynamicResource TextMetaBrush}"
+                                                           Margin="0,3,0,0"
+                                                           Visibility="{Binding Note, Converter={StaticResource StringEmptyToVis}}" />
+                                            </StackPanel>
+
+                                            <!-- 重命名态：输入框 + 确认/取消 -->
+                                            <StackPanel Orientation="Horizontal"
+                                                        IsHitTestVisible="True"
+                                                        Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVis}}">
+                                                <TextBox Style="{StaticResource AppTextBoxStyle}"
+                                                         Width="200"
+                                                         Text="{Binding RenameText, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                                         KeyDown="OnRenameKeyDown" />
+                                                <Button Style="{StaticResource IconButtonStyle}"
+                                                        Margin="6,0,0,0"
+                                                        Command="{Binding DataContext.CommitRenameCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="确认">
+                                                    <Path Data="M4 11 L9 16 L20 5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          StrokeLineJoin="Round"
+                                                          Width="14" Height="14"
+                                                          Stretch="Uniform" />
+                                                </Button>
+                                                <Button Style="{StaticResource IconButtonStyle}"
+                                                        Margin="4,0,0,0"
+                                                        Command="{Binding DataContext.CancelRenameCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="取消">
+                                                    <Path Data="M5 5 L19 19 M19 5 L5 19"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Width="14" Height="14"
+                                                          Stretch="Uniform" />
+                                                </Button>
+                                            </StackPanel>
+
+                                            <!-- 删除确认态 -->
+                                            <StackPanel Orientation="Horizontal"
+                                                        IsHitTestVisible="True"
+                                                        Visibility="{Binding IsConfirmingDelete, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="确定删除这份方案？"
+                                                           FontSize="12.5"
+                                                           Foreground="{DynamicResource DangerBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource IconButtonStyle}"
+                                                        Margin="8,0,0,0"
+                                                        Command="{Binding DataContext.ConfirmDeleteCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="确认删除">
+                                                    <Path Data="M4 11 L9 16 L20 5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          StrokeLineJoin="Round"
+                                                          Width="14" Height="14"
+                                                          Stretch="Uniform" />
+                                                </Button>
+                                                <Button Style="{StaticResource IconButtonStyle}"
+                                                        Margin="4,0,0,0"
+                                                        Command="{Binding DataContext.CancelDeleteCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="取消">
+                                                    <Path Data="M5 5 L19 19 M19 5 L5 19"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Width="14" Height="14"
+                                                          Stretch="Uniform" />
+                                                </Button>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- 右侧操作区 -->
+                                        <StackPanel Grid.Column="2"
+                                                    Orientation="Horizontal"
+                                                    VerticalAlignment="Center"
+                                                    IsHitTestVisible="True">
+
+                                            <!-- 生效中：显示标记，不可再切 -->
+                                            <Border Style="{StaticResource AccentSubtlePillStyle}"
+                                                    Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Style="{StaticResource AccentPillTextStyle}"
+                                                           Text="使用中" />
+                                            </Border>
+
+                                            <!-- 未生效：切换按钮 -->
+                                            <Button Style="{StaticResource GhostButtonStyle}"
+                                                    MinWidth="62"
+                                                    Visibility="{Binding IsActive, Converter={StaticResource InverseBoolToVis}}"
+                                                    Command="{Binding DataContext.SelectProfileCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="选中这份方案">
+                                                <TextBlock Text="切换" TextAlignment="Center" />
+                                            </Button>
+
+                                            <!-- 重命名 -->
+                                            <Button Style="{StaticResource IconButtonStyle}"
+                                                    Margin="6,0,0,0"
+                                                    Command="{Binding DataContext.StartRenameCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="重命名">
+                                                <Path Data="M4 20 h4 L19 9 a2.5 2.5 0 0 0 -3.5 -3.5 L4.5 16.5 Z"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"
+                                                      Width="14" Height="14"
+                                                      Stretch="Uniform" />
+                                            </Button>
+
+                                            <!-- 删除 -->
+                                            <Button Style="{StaticResource IconButtonStyle}"
+                                                    Margin="4,0,0,0"
+                                                    Command="{Binding DataContext.AskDeleteCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="删除">
+                                                <Path Data="M4 7 h16 M9 7 V5 h6 v2 M6 7 l1 13 h10 l1 -13 M10 11 v6 M14 11 v6"
+                                                      Stroke="{DynamicResource DangerBrush}"
+                                                      StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"
+                                                      Width="14" Height="14"
+                                                      Stretch="Uniform" />
+                                            </Button>
+                                        </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- ==================== 底部 ==================== -->
+                <Grid Grid.Row="2" Margin="24,14,24,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左：新建方案 + 状态提示 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource GhostButtonStyle}"
+                                Command="{Binding CreateProfileCommand}"
+                                ToolTip="新建一份空白方案">
+                            <TextBlock Text="新建方案" TextAlignment="Center" />
+                        </Button>
+
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMetaBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0" />
+                    </StackPanel>
+
+                    <!-- 右：取消 / 确定 -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Style="{StaticResource GhostButtonStyle}"
+                                MinWidth="76"
+                                Command="{Binding CloseOverlayCommand}"
+                                ToolTip="关闭，不切换方案">
+                            <TextBlock Text="取消" TextAlignment="Center" />
+                        </Button>
+
+                        <Button Style="{StaticResource PrimaryButtonStyle}"
+                                MinWidth="88"
+                                Margin="8,0,0,0"
+                                Command="{Binding ApplySelectionCommand}"
+                                ToolTip="应用选中的方案">
+                            <TextBlock Text="确定" TextAlignment="Center" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,444 @@
+<UserControl x:Class="ZentwikThemeDemo.Views.PowerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:ZentwikThemeDemo.Converters"
+             xmlns:vm="clr-namespace:ZentwikThemeDemo.ViewModels"
+             xmlns:views="clr-namespace:ZentwikThemeDemo.Views"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <!--
+      电源页（第三页）。
+
+      【为什么独立成页，而不是留在调校页】
+      电源策略走的是 Windows 电源计划接口，与 SMU 调校是两条完全不同的通路：
+      一条改处理器参数，一条改系统电源计划。
+      混在一页会让「改 SMU」和「改系统电源」两件风险等级不同的事
+      共用一个「应用」按钮 —— 用户分不清哪个键管哪个。
+
+      【控件形态按值域选】
+        枚举（Boost 0–4 / ASPM 0–2）→ 分段控件
+        连续数值（EPP 0–100 / 最大处理器状态 50–100）→ 滑块
+        布尔（空闲禁用）→ 开关
+      这样界面上能取到的值必然落在契约允许区间内。
+
+      【术语解释放 ToolTip，不占版面】
+      契约要求不得只摆 EPP / ASPM 裸术语；
+      但把解释铺在界面上会让这一页变成一堵字。
+      所以标题保留术语 + 一句通俗副标题，完整解释放悬浮提示。
+    -->
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:IntEqualsBoolConverter x:Key="IntEqualsBool" />
+    </UserControl.Resources>
+
+    <UserControl.DataContext>
+        <vm:PowerViewModel />
+    </UserControl.DataContext>
+
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,0,40">
+
+                <!-- ==================== 页头 ==================== -->
+                <TextBlock Text="电源"
+                           FontSize="32"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Margin="0,0,0,20" />
+
+                <!-- 方案条（与调校页、进程页共用同一个大窗） -->
+                <views:ProfileBar Margin="0,0,0,20" />
+
+                <!-- ==================== 电源方案 ==================== -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,20">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 左：当前方案 -->
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Windows 电源方案"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Border Style="{StaticResource AccentSubtlePillStyle}">
+                                    <TextBlock Style="{StaticResource AccentPillTextStyle}"
+                                               Text="{Binding ActiveSchemeName}" />
+                                </Border>
+
+                                <TextBlock Text="{Binding SupplyLabel}"
+                                           FontSize="12.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 右：操作 -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource GhostButtonStyle}"
+                                    Command="{Binding RestoreDefaultsCommand}"
+                                    ToolTip="把五项策略恢复成默认值（不会自动下发）">
+                                <TextBlock Text="恢复默认" TextAlignment="Center" />
+                            </Button>
+
+                            <Button Style="{StaticResource IconButtonStyle}"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding RefreshCommand}"
+                                    ToolTip="从系统读取当前电源策略">
+                                <Path Data="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24L21 8 M21 3v5h-5"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Width="16" Height="16"
+                                      Stretch="Uniform" />
+                            </Button>
+
+                            <Button Style="{StaticResource PrimaryButtonStyle}"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding ApplyCommand}"
+                                    ToolTip="把当前策略写入 Windows 电源计划">
+                                <TextBlock Text="应用" TextAlignment="Center" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ==================== 处理器电源策略 ==================== -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,20">
+                    <StackPanel>
+
+                        <TextBlock Text="处理器电源策略"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                        <Border Style="{StaticResource DividerStyle}" Margin="0,18,0,0" />
+
+                        <!-- 能效偏好（EPP）：0–100 连续量 → 滑块 -->
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
+                                <TextBlock Text="能效偏好（EPP）"
+                                           FontSize="14"
+                                           FontWeight="Medium"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="0 = 性能优先，100 = 能效优先"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource TextMetaBrush}"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Slider Style="{StaticResource AccentSliderStyle}"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        Value="{Binding Epp, Mode=TwoWay}"
+                                        IsEnabled="{Binding EppSupported}"
+                                        Margin="0,0,16,0"
+                                        ToolTip="能效偏好：数值越低越偏向性能，越高越偏向省电。与系统设置同义。" />
+
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Epp, Mode=OneWay}"
+                                           FontFamily="{DynamicResource AppMonoFontFamily}"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           MinWidth="36"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding EppSupported, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="本机不支持"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="16,0,0,0"
+                                       ToolTip="{Binding EppError}"
+                                       Visibility="{Binding EppSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- 升频模式（Boost）：0–4 枚举 → 分段控件 -->
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
+                                <TextBlock Text="升频模式（Boost）"
+                                           FontSize="14"
+                                           FontWeight="Medium"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="处理器自动升频的激进程度"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource TextMetaBrush}"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource ControlBgBrush}"
+                                    BorderBrush="{DynamicResource ControlBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="3">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="BoostMode"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding BoostModeSupported}"
+                                                IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=0}">
+                                        <TextBlock Text="关闭" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding BoostModeSupported}"
+                                                IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=1}">
+                                        <TextBlock Text="开启" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding BoostModeSupported}"
+                                                IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=2}">
+                                        <TextBlock Text="激进" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding BoostModeSupported}"
+                                                IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=3}">
+                                        <TextBlock Text="高效开启" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding BoostModeSupported}"
+                                                IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=4}">
+                                        <TextBlock Text="高效激进" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="本机不支持"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="16,0,0,0"
+                                       ToolTip="{Binding BoostModeError}"
+                                       Visibility="{Binding BoostModeSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- 最大处理器状态：50–100 连续量 → 滑块 -->
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
+                                <TextBlock Text="最大处理器状态"
+                                           FontSize="14"
+                                           FontWeight="Medium"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="限制处理器可用的最高性能比例"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource TextMetaBrush}"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Slider Style="{StaticResource AccentSliderStyle}"
+                                        Minimum="50"
+                                        Maximum="100"
+                                        Value="{Binding MaxProcessorState, Mode=TwoWay}"
+                                        IsEnabled="{Binding MaxProcessorStateSupported}"
+                                        Margin="0,0,16,0"
+                                        ToolTip="最大处理器状态：可调范围 50% – 100%，低于 50% 会让机器卡到连界面都拖不动。" />
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding MaxProcessorState, Mode=OneWay}"
+                                               FontFamily="{DynamicResource AppMonoFontFamily}"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               MinWidth="36"
+                                               TextAlignment="Right"
+                                               Visibility="{Binding MaxProcessorStateSupported, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="%"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="3,0,0,0"
+                                               Visibility="{Binding MaxProcessorStateSupported, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="本机不支持"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="16,0,0,0"
+                                       ToolTip="{Binding MaxProcessorStateError}"
+                                       Visibility="{Binding MaxProcessorStateSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- 空闲禁用（C-State）：布尔 → 开关 -->
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
+                                <TextBlock Text="空闲禁用（C-State）"
+                                           FontSize="14"
+                                           FontWeight="Medium"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="开启后处理器不再进入深度空闲：响应更快，待机功耗上升"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource TextMetaBrush}"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <ToggleButton Style="{StaticResource ToggleSwitchStyle}"
+                                              HorizontalAlignment="Left"
+                                              IsChecked="{Binding IdleDisable, Mode=TwoWay}"
+                                              IsEnabled="{Binding IdleDisableSupported}"
+                                              ToolTip="与系统的「处理器空闲禁用」同义：开启 = 禁用空闲，关闭 = 允许空闲。" />
+
+                                <TextBlock Margin="12,0,0,0"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <!--
+                                            状态文案写在 Style 里而不是 Text 属性上：
+                                            局部值优先级高于 Style 触发器，
+                                            写成 Text="未禁用" 的话触发器就永远不生效。
+                                        -->
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="未禁用" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IdleDisable}" Value="True">
+                                                    <Setter Property="Text" Value="已禁用" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="本机不支持"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="16,0,0,0"
+                                       ToolTip="{Binding IdleDisableError}"
+                                       Visibility="{Binding IdleDisableSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- ASPM（PCIe 链路电源管理）：0–2 枚举 → 分段控件 -->
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
+                                <TextBlock Text="PCIe 链路电源管理（ASPM）"
+                                           FontSize="14"
+                                           FontWeight="Medium"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="扩展卡与显卡的待机省电策略"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource TextMetaBrush}"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource ControlBgBrush}"
+                                    BorderBrush="{DynamicResource ControlBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="3">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="Aspm"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding AspmSupported}"
+                                                IsChecked="{Binding Aspm, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=0}">
+                                        <TextBlock Text="关闭" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="Aspm"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding AspmSupported}"
+                                                IsChecked="{Binding Aspm, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=1}">
+                                        <TextBlock Text="中等节能" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="Aspm"
+                                                Style="{StaticResource SegmentRadioButtonStyle}"
+                                                IsEnabled="{Binding AspmSupported}"
+                                                IsChecked="{Binding Aspm, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=2}">
+                                        <TextBlock Text="最大节能" TextAlignment="Center" Padding="4,0" />
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="本机不支持"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="16,0,0,0"
+                                       ToolTip="{Binding AspmError}"
+                                       Visibility="{Binding AspmSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <Border Style="{StaticResource DividerStyle}" Margin="0,18,0,0" />
+
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMetaBrush}"
+                                   Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

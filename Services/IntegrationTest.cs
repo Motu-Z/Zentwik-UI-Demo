@@ -357,6 +357,155 @@ public static class IntegrationTest
         // 恢复默认强调色
         theme.SetAccentColor(Color.FromRgb(0x60, 0xCD, 0xFF));
 
+        // ============================================================
+        // 9. 配置方案会话 + 三页挂载（本轮新增）
+        // ============================================================
+        Say("\n=== 9. 配置方案会话与三页挂载 ===");
+
+        var session = ProfileSession.Instance;
+
+        Check("方案会话是单例", ReferenceEquals(session, ProfileSession.Instance));
+        Check("初始有 3 份方案", session.Profiles.Count == 3, $"实际 {session.Profiles.Count}");
+        Check("初始当前方案非空", session.Current is not null);
+        Check("当前方案名可读", session.CurrentName.Length > 0, session.CurrentName);
+
+        // 切换：大窗里选一行 → 确定 → 生效
+        var target = session.Profiles[1];
+        session.SelectProfileCommand.Execute(target);
+        Check("预备选中已置位", target.IsSelected);
+        Check("同一时刻只有一份被选中",
+              session.Profiles.Count(p => p.IsSelected) == 1);
+
+        session.ApplySelectionCommand.Execute(null);
+        Check("确定后当前方案已切换", ReferenceEquals(session.Current, target), session.CurrentName);
+        Check("切换后大窗自动关闭", !session.IsOverlayOpen);
+        Check("切换后旧方案不再标记为生效中", !session.Profiles[0].IsActive);
+
+        // 取消：预备选中后取消，不应改变当前方案
+        var another = session.Profiles[2];
+        session.SelectProfileCommand.Execute(another);
+        session.CloseOverlayCommand.Execute(null);
+        Check("取消后当前方案不变", ReferenceEquals(session.Current, target), session.CurrentName);
+        Check("取消后大窗关闭", !session.IsOverlayOpen);
+        Check("取消后预备选中态被清空", !another.IsSelected);
+
+        // 重命名：空名必须被拒绝
+        var renaming = session.Profiles[0];
+        session.StartRenameCommand.Execute(renaming);
+        Check("进入重命名态", renaming.IsRenaming);
+
+        renaming.RenameText = "   ";
+        session.CommitRenameCommand.Execute(renaming);
+        Check("空名被拒绝，保留原名", renaming.Name != "   " && renaming.Name.Length > 0, renaming.Name);
+        Check("空名后退出重命名态", !renaming.IsRenaming);
+
+        renaming.RenameText = "新名字";
+        session.CommitRenameCommand.Execute(renaming);
+        Check("重命名生效", renaming.Name == "新名字", renaming.Name);
+
+        // 删除：需先确认
+        var doomed = session.Profiles[2];
+        int before = session.Profiles.Count;
+        session.AskDeleteCommand.Execute(doomed);
+        Check("删除进入确认态", doomed.IsConfirmingDelete);
+        Check("确认前不删除", session.Profiles.Count == before);
+
+        session.ConfirmDeleteCommand.Execute(doomed);
+        Check("确认后已删除", session.Profiles.Count == before - 1, $"实际 {session.Profiles.Count}");
+
+        // 新建：进入重命名态等待输入名字
+        int beforeCreate = session.Profiles.Count;
+        session.CreateProfileCommand.Execute(null);
+        Check("新建后方案数 +1", session.Profiles.Count == beforeCreate + 1);
+        Check("新建项处于重命名态", session.Profiles[^1].IsRenaming);
+
+        session.Profiles[^1].RenameText = "测试方案";
+        session.CommitRenameCommand.Execute(session.Profiles[^1]);
+        Check("新建方案可命名", session.Profiles[^1].Name == "测试方案", session.Profiles[^1].Name);
+
+        // 三页挂载：每页都要有方案条；大窗挂在窗口级（真正的模态要盖住整窗）
+        CheckProfileChrome("调校页", new Views.TuningView());
+        CheckProfileChrome("进程页", new Views.ProcessView());
+        CheckProfileChrome("电源页", new Views.PowerView());
+
+        // 大窗在窗口级：只挂一份，且跨两列盖住侧栏
+        var shell = new MainWindow();
+        shell.Measure(new Size(1180, 800));
+        shell.Arrange(new Rect(0, 0, 1180, 800));
+        shell.UpdateLayout();
+
+        // 大窗是根 Grid 的直接子元素。
+        // 不走 FindVisualChild（它是深度优先，会先钻进侧栏的整棵子树），
+        // 直接枚举根 Grid 的直接子元素 —— 断言的是「挂在根上」这件事本身。
+        var shellOverlay = shell.Content is Grid shellGrid
+            ? shellGrid.Children.OfType<Views.ProfileOverlay>().FirstOrDefault()
+            : null;
+
+        Check("窗口级挂载了模态大窗", shellOverlay is not null);
+        Check("窗口级大窗指向会话单例",
+              shellOverlay is not null && ReferenceEquals(shellOverlay.DataContext, ProfileSession.Instance));
+
+        // 大窗必须跨两列（否则遮罩只盖侧栏、内容区漏出来）
+        bool spansBothColumns = false;
+        if (shellOverlay is not null)
+        {
+            int col = System.Windows.Controls.Grid.GetColumn(shellOverlay);
+            int span = System.Windows.Controls.Grid.GetColumnSpan(shellOverlay);
+            spansBothColumns = col == 0 && span == 2;
+        }
+
+        Check("大窗跨两列（盖住侧栏）", spansBothColumns);
+
+        var overlayDataContext = new Views.ProfileOverlay().DataContext;
+        Check("模态大窗绑定到会话单例", ReferenceEquals(overlayDataContext, session));
+
+        var barDataContext = new Views.ProfileBar().DataContext;
+        Check("方案条绑定到会话单例", ReferenceEquals(barDataContext, session));
+
+        // 三页的 ViewModel 各自独立，但方案状态是共享的
+        Check("电源页 VM 可构造", new PowerViewModel() is not null);
+        Check("进程页 VM 可构造", new ProcessViewModel() is not null);
+        Check("调校页 VM 可构造", new TuningViewModel() is not null);
+
+        // 电源策略值域（严格对齐 Zentwik.Core.PowerPolicySnapshot）
+        var power = new PowerViewModel();
+        Check("EPP 默认 0–100 区间内", power.Epp is >= 0 and <= 100);
+        Check("Boost 默认 0–4 区间内", power.BoostMode is >= 0 and <= 4);
+        Check("最大处理器状态默认 50–100 区间内", power.MaxProcessorState is >= 50 and <= 100);
+        Check("ASPM 默认 0–2 区间内", power.Aspm is >= 0 and <= 2);
+        Check("空闲禁用默认 false（与系统同向：true = 禁用）", !power.IdleDisable);
+
+        // 进程页
+        var proc = new ProcessViewModel();
+        Check("进程页有运行中进程", proc.RunningProcesses.Count > 0, $"实际 {proc.RunningProcesses.Count}");
+        Check("进程页有已保存规则", proc.SavedRules.Count > 0, $"实际 {proc.SavedRules.Count}");
+        Check("未搜索时过滤结果等于全部", proc.FilteredProcesses.Count == proc.RunningProcesses.Count);
+
+        proc.SearchText = "cs2";
+        Check("搜索按进程名过滤", proc.FilteredProcesses.Count == 1, $"实际 {proc.FilteredProcesses.Count}");
+        Check("搜索命中的是 cs2.exe", proc.FilteredProcesses[0].Name == "cs2.exe");
+
+        proc.SearchText = "steamapps";
+        Check("搜索也匹配路径", proc.FilteredProcesses.Count == 1, $"实际 {proc.FilteredProcesses.Count}");
+
+        proc.SearchText = "不存在的进程名";
+        Check("无命中时结果为空", proc.FilteredProcesses.Count == 0);
+
+        proc.SearchText = string.Empty;
+        Check("清空搜索后恢复全部", proc.FilteredProcesses.Count == proc.RunningProcesses.Count);
+
+        // 规则启用/禁用与删除
+        var rule = proc.SavedRules[0];
+        bool wasEnabled = rule.Enabled;
+        proc.ToggleRuleCommand.Execute(rule);
+        Check("规则启用态已翻转", rule.Enabled != wasEnabled);
+        Check("按钮文案随启用态变化",
+              rule.ToggleLabel == (rule.Enabled ? "禁用" : "启用"), rule.ToggleLabel);
+
+        int rulesBefore = proc.SavedRules.Count;
+        proc.DeleteRuleCommand.Execute(rule);
+        Check("规则已删除", proc.SavedRules.Count == rulesBefore - 1);
+
         return _failures;
     }
 
@@ -364,6 +513,30 @@ public static class IntegrationTest
     {
         Console.WriteLine(line);
         _sink?.AppendLine(line);
+    }
+
+    /// <summary>
+    /// 校验一页是否挂好了方案条，且它指向同一个会话单例。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么要查可视树而不是查字段】
+    /// 方案条是 XAML 里声明的控件，只有把它挂进可视树，
+    /// 布局跑过一遍之后才能在 VisualTree 里找到。
+    /// 断言的是「页面上真的有这个控件」——
+    /// 漏挂一个，用户在这页就找不到切换方案的入口。
+    /// </remarks>
+    private static void CheckProfileChrome(string page, FrameworkElement root)
+    {
+        // 跑一次布局，让声明式控件实例化
+        root.Measure(new Size(1200, 2000));
+        root.Arrange(new Rect(0, 0, 1200, 2000));
+        root.UpdateLayout();
+
+        var bar = FindVisualChild<Views.ProfileBar>(root);
+
+        Check($"{page}挂载了方案条", bar is not null);
+        Check($"{page}方案条指向会话单例",
+              bar is not null && ReferenceEquals(bar.DataContext, ProfileSession.Instance));
     }
 
     private static string BrushColor(ResourceDictionary resources, string key)

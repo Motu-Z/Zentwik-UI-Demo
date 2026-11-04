@@ -185,6 +185,15 @@ public partial class App : Application
                     window.UpdateLayout();
                 }
 
+                // --profile : 打开配置方案模态大窗后再拍
+                // 大窗是 Grid 叠层（在主视觉树里），能直接拍到 ——
+                // 这与 ToolTip / 下拉框的 Popup 不同。
+                if (e.Args.Contains("--profile"))
+                {
+                    ViewModels.ProfileSession.Instance.IsOverlayOpen = true;
+                    window.UpdateLayout();
+                }
+
                 // --tooltip : 额外叠加一个 ToolTip 预览（Popup 拍不到，只能这样验）
                 if (e.Args.Contains("--tooltip"))
                 {

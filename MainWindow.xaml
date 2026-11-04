@@ -133,6 +133,24 @@
                         </StackPanel>
                     </RadioButton>
 
+                    <RadioButton x:Name="NavPower"
+                                 Style="{StaticResource NavItemStyle}"
+                                 GroupName="Nav"
+                                 Tag="Power"
+                                 Checked="OnNavChecked">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- 电池 + 闪电：与「行为」的纯闪电区分开 -->
+                            <Path Data="M15 4 h4 v16 h-4 M4 7 h11 v10 h-11 z M11.5 9.5 L8 13 h2.5 L10 16.5 L14 12 h-2.5 z"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                  StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Width="18" Height="18"
+                                  Stretch="Uniform" />
+                            <TextBlock Text="电源" Margin="12,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+
                     <RadioButton x:Name="NavConfig"
                                  Style="{StaticResource NavItemStyle}"
                                  GroupName="Nav"
@@ -286,5 +304,27 @@
                     Background="Transparent"
                     MouseLeftButtonDown="OnDragAreaMouseDown" />
         </Grid>
+
+        <!--
+          ==================== 配置方案模态大窗 ====================
+
+          【为什么挂在窗口级，而不是各页面里】
+          真正的模态要盖住整窗 —— 侧栏与窗口按钮都不能再点。
+          若把大窗放在页面里（ContentControl 内），它只能盖住内容区，
+          侧栏照样能点，用户能在模态打开时切走页面。
+
+          挂在窗口级还有一个好处：只挂一份。
+          三个页面各挂一份的话，切换页面时大窗会被换掉 ——
+          而它本来就应该跨页保持（用户可能开着大窗去看别的页再回来）。
+
+          【Grid.ColumnSpan="2"】
+          跨两列才能盖住侧栏。只占第 1 列的话遮罩只覆盖左侧导航栏，
+          内容区反而漏出来。
+
+          【为什么 DataContext 是共享单例】
+          大窗与页面上的方案条都指向 ProfileSession.Instance，
+          所以大窗里切完方案，页面方案条上的「当前方案」立刻跟着变。
+        -->
+        <views:ProfileOverlay Grid.ColumnSpan="2" Panel.ZIndex="100" />
     </Grid>
 </Window>

@@ -1,0 +1,325 @@
+<UserControl x:Class="ZentwikThemeDemo.Views.ProcessView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:ZentwikThemeDemo.Converters"
+             xmlns:vm="clr-namespace:ZentwikThemeDemo.ViewModels"
+             xmlns:views="clr-namespace:ZentwikThemeDemo.Views"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <!--
+      进程页（第二页）。
+
+      【两张表，别混】
+      上半「运行中进程」是当前活着的进程（query-processes → ProcessEntryPayload）：
+      pid / name / path / cpu / priority / matchedRuleName。
+      下半「已保存规则」是持久化的调度规则（query-scheduling-rules → ScheduleRulePayload）：
+      id / processName / targetType / targetValue / priority / enabled / path。
+
+      【为什么用 Grid 自绘表格而不是 DataGrid】
+      DataGrid 的默认行/单元格模板在深色主题下要覆盖的东西太多
+      （交替行色、选中色、焦点虚线框、排序指示器……），
+      漏一处就会出现「白底黑字」的孤儿单元格。
+      自己用 Grid 拼反而完全可控：每列一个固定的 * / Auto 宽度。
+
+      【列宽的分配】
+      内容区 864px、卡片内边距 48px → 表格可用 816px。
+      路径列最宽（路径字符数差异最大），进程名次之，其余固定。
+    -->
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:StringEmptyToVisibilityConverter x:Key="StringEmptyToVis" />
+        <conv:CountToVisibilityConverter x:Key="CountToVis" />
+    </UserControl.Resources>
+
+    <UserControl.DataContext>
+        <vm:ProcessViewModel />
+    </UserControl.DataContext>
+
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,0,40">
+
+                <!-- ==================== 页头 ==================== -->
+                <TextBlock Text="进程"
+                           FontSize="32"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Margin="0,0,0,20" />
+
+                <!-- 方案条（与调校页、电源页共用同一个大窗） -->
+                <views:ProfileBar Margin="0,0,0,20" />
+
+                <!-- ==================== 运行中进程 ==================== -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,20">
+                    <StackPanel>
+
+                        <!-- 标题行：左侧标题，右侧工具 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0"
+                                       Text="运行中进程"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center" />
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Style="{StaticResource GhostButtonStyle}"
+                                        Command="{Binding ManageMaskCommand}"
+                                        ToolTip="管理自定义核心掩码">
+                                    <TextBlock Text="管理掩码" TextAlignment="Center" />
+                                </Button>
+
+                                <Button Style="{StaticResource PrimaryButtonStyle}"
+                                        Margin="8,0,0,0"
+                                        Command="{Binding ApplyRuleCommand}"
+                                        ToolTip="把表格里的掩码与优先级下发到后台监听">
+                                    <TextBlock Text="应用规则" TextAlignment="Center" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 搜索框 -->
+                        <Grid Margin="0,16,0,0">
+                            <TextBox Style="{StaticResource AppTextBoxStyle}"
+                                     Height="34"
+                                     Padding="34,4,8,4"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" />
+
+                            <!-- 放大镜 -->
+                            <Path Data="M11 4 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14 M16 16 l5 5"
+                                  Stroke="{DynamicResource TextMetaBrush}"
+                                  StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Width="15" Height="15"
+                                  Stretch="Uniform"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  Margin="12,0,0,0"
+                                  IsHitTestVisible="False" />
+
+                            <!--
+                                水印占位符。
+                                WPF 的 TextBox 没有 Watermark 属性，
+                                所以叠一个 TextBlock，用 DataTrigger 让它
+                                只在输入框为空时出现。
+                            -->
+                            <TextBlock Text="搜索进程名或路径"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource TextMetaBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="34,0,0,0"
+                                       IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SearchText}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+
+                        <!-- 表头 -->
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="76" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="96" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Style="{StaticResource TableHeaderTextStyle}" Text="进程名" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource TableHeaderTextStyle}" Text="路径" />
+                            <TextBlock Grid.Column="2" Style="{StaticResource TableHeaderTextStyle}" Text="占用" />
+                            <TextBlock Grid.Column="3" Style="{StaticResource TableHeaderTextStyle}" Text="核心掩码" />
+                            <TextBlock Grid.Column="4" Style="{StaticResource TableHeaderTextStyle}" Text="优先级" />
+                        </Grid>
+
+                        <Border Style="{StaticResource DividerStyle}" Margin="0,10,0,0" />
+
+                        <!-- 进程行 -->
+                        <ItemsControl ItemsSource="{Binding FilteredProcesses}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="76" />
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="96" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Style="{StaticResource TableCellTextStyle}"
+                                                   Text="{Binding Name}"
+                                                   FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,10,10,10" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   Style="{StaticResource TableCellMetaTextStyle}"
+                                                   Text="{Binding Path}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,10,10,10"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Path}" />
+
+                                        <TextBlock Grid.Column="2"
+                                                   Style="{StaticResource TableCellMetaTextStyle}"
+                                                   Text="{Binding CpuText}"
+                                                   FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,10,0,10" />
+
+                                        <TextBlock Grid.Column="3"
+                                                   Style="{StaticResource TableCellTextStyle}"
+                                                   Text="{Binding MaskLabel}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,10,0,10"
+                                                   Visibility="{Binding MaskLabel, Converter={StaticResource StringEmptyToVis}}" />
+
+                                        <TextBlock Grid.Column="4"
+                                                   Style="{StaticResource TableCellTextStyle}"
+                                                   Text="{Binding Priority}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,10,0,10" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 空结果 -->
+                        <TextBlock Text="没有匹配的进程"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextMetaBrush}"
+                                   Margin="0,16,0,4"
+                                   Visibility="{Binding FilteredProcesses.Count, Converter={StaticResource CountToVis}}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 已保存规则 ==================== -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,20">
+                    <StackPanel>
+
+                        <TextBlock Text="已保存规则"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                        <Border Style="{StaticResource DividerStyle}" Margin="0,16,0,0" />
+
+                        <!-- 表头 -->
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="150" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Style="{StaticResource TableHeaderTextStyle}" Text="进程名" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource TableHeaderTextStyle}" Text="路径" />
+                            <TextBlock Grid.Column="2" Style="{StaticResource TableHeaderTextStyle}" Text="核心掩码" />
+                            <TextBlock Grid.Column="3" Style="{StaticResource TableHeaderTextStyle}" Text="优先级" />
+                            <TextBlock Grid.Column="4" Style="{StaticResource TableHeaderTextStyle}" Text="操作" />
+                        </Grid>
+
+                        <Border Style="{StaticResource DividerStyle}" Margin="0,10,0,0" />
+
+                        <!-- 规则行 -->
+                        <ItemsControl ItemsSource="{Binding SavedRules}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="130" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="150" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Style="{StaticResource TableCellTextStyle}"
+                                                   Text="{Binding ProcessName}"
+                                                   FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,12,10,12" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   Style="{StaticResource TableCellMetaTextStyle}"
+                                                   Text="{Binding Path}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,12,10,12"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Path}" />
+
+                                        <TextBlock Grid.Column="2"
+                                                   Style="{StaticResource TableCellTextStyle}"
+                                                   Text="{Binding MaskLabel}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,12,0,12" />
+
+                                        <TextBlock Grid.Column="3"
+                                                   Style="{StaticResource TableCellTextStyle}"
+                                                   Text="{Binding Priority}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,12,0,12" />
+
+                                        <!-- 操作列：禁用/启用 + 删除 -->
+                                        <StackPanel Grid.Column="4"
+                                                    Orientation="Horizontal"
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,8,0,8">
+
+                                            <Button Style="{StaticResource GhostButtonStyle}"
+                                                    MinWidth="58"
+                                                    Padding="10,5"
+                                                    FontSize="12.5"
+                                                    Command="{Binding DataContext.ToggleRuleCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="关掉的规则仍保留，但后台不会按它调度">
+                                                <TextBlock Text="{Binding ToggleLabel}" TextAlignment="Center" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource DangerButtonStyle}"
+                                                    Margin="8,0,0,0"
+                                                    Padding="10,5"
+                                                    FontSize="12.5"
+                                                    Command="{Binding DataContext.DeleteRuleCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="删除这条规则">
+                                                <TextBlock Text="删除" TextAlignment="Center" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- 状态行 -->
+                <TextBlock Text="{Binding StatusMessage}"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextMetaBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

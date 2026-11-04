@@ -43,6 +43,13 @@
     <!-- ============ 语义色（固定，不随强调色变）============ -->
     <SolidColorBrush x:Key="DangerBrush" Color="#FFC42B1C" />
 
+    <!--
+      模态遮罩。
+      深色下用更高的不透明度（0.62）—— 底色本来就暗，
+      遮罩太浅会分不出「上面」和「下面」。
+    -->
+    <SolidColorBrush x:Key="OverlayScrimBrush" Color="#9E000000" />
+
     <!-- ============ 字体 ============ -->
     <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI</FontFamily>
     <FontFamily x:Key="AppMonoFontFamily">Cascadia Mono, Consolas, Courier New</FontFamily>
